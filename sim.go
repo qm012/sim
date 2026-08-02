@@ -1,0 +1,46 @@
+// Copyright (c) 2026 qm012<1007661792@qq.com>. All rights reserved.
+// Use of this source code is governed by a MIT license
+// that can be found in the LICENSE file.
+
+package sim
+
+import "net/http"
+
+// allMethods is the complete list of HTTP request methods
+// defined by the net/http package.
+var allMethods = []string{
+	http.MethodGet,
+	http.MethodHead,
+	http.MethodPost,
+	http.MethodPut,
+	http.MethodPatch,
+	http.MethodDelete,
+	http.MethodConnect,
+	http.MethodOptions,
+	http.MethodTrace,
+}
+
+// Router consisting of the core routing methods implemented by App,
+// using only the standard net/http.
+type Router interface {
+	// Handle registers the handler for the given pattern, with the same
+	// behavior as [http.ServeMux.Handle] and [http.Handle].
+	Handle(pattern string, handler http.Handler)
+	// HandleFunc registers the handler function for the given pattern,
+	// with the same behavior as [http.ServeMux.HandleFunc] and [http.HandleFunc].
+	HandleFunc(pattern string, handler http.HandlerFunc)
+
+	// Any Get Post Delete Patch Put Options Head Connect and Trace
+	// register handlerFunc on the given pattern for their respective HTTP
+	// methods; Any matches all methods.
+	Any(path string, handlerFunc http.HandlerFunc)
+	Get(path string, handlerFunc http.HandlerFunc)
+	Post(path string, handlerFunc http.HandlerFunc)
+	Delete(path string, handlerFunc http.HandlerFunc)
+	Patch(path string, handlerFunc http.HandlerFunc)
+	Put(path string, handlerFunc http.HandlerFunc)
+	Options(path string, handlerFunc http.HandlerFunc)
+	Head(path string, handlerFunc http.HandlerFunc)
+	Connect(path string, handlerFunc http.HandlerFunc)
+	Trace(path string, handlerFunc http.HandlerFunc)
+}

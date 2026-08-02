@@ -1,0 +1,225 @@
+// Copyright (c) 2026 qm012<1007661792@qq.com>. All rights reserved.
+// Use of this source code is governed by a MIT license
+// that can be found in the LICENSE file.
+
+package sim
+
+import (
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
+
+// markHandler returns a handler that writes mark as the response body,
+// used to verify which registered handler served a request.
+func markHandler(mark string) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) {
+		io.WriteString(w, mark)
+	}
+}
+
+// serve performs an HTTP request against app and returns the recorder.
+func serve(t *testing.T, app http.Handler, method, target string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(method, target, nil)
+	rec := httptest.NewRecorder()
+	app.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestNewApp(t *testing.T) {
+	app := NewApp()
+	if app == nil {
+		t.Fatal("NewApp() returned nil")
+	}
+	if app.mux == nil {
+		t.Fatal("app.mux returned nil")
+	}
+}
+
+func TestMethodRouting(t *testing.T) {
+	tests := []struct {
+		name     string
+		method   string
+		register func(a *App, path string, h http.HandlerFunc)
+	}{
+		{http.MethodGet, http.MethodGet, (*App).Get},
+		{http.MethodPost, http.MethodPost, (*App).Post},
+		{http.MethodDelete, http.MethodDelete, (*App).Delete},
+		{http.MethodPatch, http.MethodPatch, (*App).Patch},
+		{http.MethodPut, http.MethodPut, (*App).Put},
+		{http.MethodOptions, http.MethodOptions, (*App).Options},
+		{http.MethodHead, http.MethodHead, (*App).Head},
+		{http.MethodConnect, http.MethodConnect, (*App).Connect},
+		{http.MethodTrace, http.MethodTrace, (*App).Trace},
+	}
+	app := NewApp()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.register(app, "/route", markHandler(tt.name))
+
+			// The registered method is served by its own handler.
+			rec := serve(t, app, tt.method, "/route")
+			if rec.Code != http.StatusOK {
+				t.Fatalf("%s /route = %d, want %d", tt.method, rec.Code, http.StatusOK)
+			}
+			if got := rec.Body.String(); got != tt.name {
+				t.Errorf("%s /route body = %q, want %q", tt.method, got, tt.name)
+			}
+		})
+	}
+}
+
+func TestGetPatternAlsoMatchesHead(t *testing.T) {
+	app := NewApp()
+	app.Get("/page", markHandler("page"))
+	for _, method := range []string{http.MethodGet, http.MethodHead} {
+		if rec := serve(t, app, method, "/page"); rec.Code != http.StatusOK {
+			t.Errorf("%s /page = %d, want %d", method, rec.Code, http.StatusOK)
+		}
+	}
+	// The reverse is not true: a HEAD-only registration does not serve GET.
+	app.Head("/headonly", markHandler("headonly"))
+	if rec := serve(t, app, http.MethodGet, "/headonly"); rec.Code != http.StatusMethodNotAllowed {
+		t.Errorf("GET /headonly = %d, want %d", rec.Code, http.StatusMethodNotAllowed)
+	}
+}
+
+func TestAnyMatchesAllMethods(t *testing.T) {
+	app := NewApp()
+	app.Any("/any", markHandler("any"))
+	for _, method := range allMethods {
+		rec := serve(t, app, method, "/any")
+		if rec.Code != http.StatusOK {
+			t.Errorf("%s /any = %d, want %d", method, rec.Code, http.StatusOK)
+		}
+		if got := rec.Body.String(); got != "any" {
+			t.Errorf("%s /any body = %q, want %q", method, got, "any")
+		}
+	}
+}
+
+func TestHandleMatchesAllMethods(t *testing.T) {
+	app := NewApp()
+	app.Handle("/all", markHandler("handle"))
+	for _, method := range allMethods {
+		if rec := serve(t, app, method, "/all"); rec.Code != http.StatusOK {
+			t.Errorf("%s /all = %d, want %d", method, rec.Code, http.StatusOK)
+		}
+	}
+}
+
+func TestHandleFuncMatchesAllMethods(t *testing.T) {
+	app := NewApp()
+	app.HandleFunc("/all", markHandler("handlefunc"))
+	for _, method := range allMethods {
+		if rec := serve(t, app, method, "/all"); rec.Code != http.StatusOK {
+			t.Errorf("%s /all = %d, want %d", method, rec.Code, http.StatusOK)
+		}
+	}
+}
+
+func TestWildcardPathValue(t *testing.T) {
+	app := NewApp()
+	app.Get("/users/{id}", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "user:%v", r.PathValue("id"))
+	})
+	rec := serve(t, app, http.MethodGet, "/users/42")
+	if rec.Code != http.StatusOK || rec.Body.String() != "user:42" {
+		t.Errorf("GET /users/42 = %d %q, want 200 %q", rec.Code, rec.Body.String(), "user:42")
+	}
+	// {id} matches a single path segment only.
+	if rec := serve(t, app, http.MethodGet, "/users/42/posts"); rec.Code != http.StatusNotFound {
+		t.Errorf("GET /users/42/posts = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+}
+
+func TestPrecedenceExactOverWildcard(t *testing.T) {
+	app := NewApp()
+	app.Get("/users/{id}", markHandler("wildcard"))
+	app.Get("/users/me", markHandler("exact"))
+	if rec := serve(t, app, http.MethodGet, "/users/me"); rec.Body.String() != "exact" {
+		t.Errorf("GET /users/me body = %q, want %q", rec.Body.String(), "exact")
+	}
+	if rec := serve(t, app, http.MethodGet, "/users/42"); rec.Body.String() != "wildcard" {
+		t.Errorf("GET /users/42 body = %q, want %q", rec.Body.String(), "wildcard")
+	}
+}
+
+func TestSubtreePatternAndTrailingSlashRedirect(t *testing.T) {
+	app := NewApp()
+	app.HandleFunc("/api/", markHandler("api"))
+
+	// A subtree pattern matches any path beneath it, for any method.
+	if rec := serve(t, app, http.MethodPost, "/api/v1/items"); rec.Code != http.StatusOK || rec.Body.String() != "api" {
+		t.Errorf("POST /api/v1/items = %d %q, want 200 %q", rec.Code, rec.Body.String(), "api")
+	}
+
+	// Requesting the subtree root without a trailing slash redirects to it
+	// (Go 1.22+ ServeMux uses a 307 Temporary Redirect).
+	rec := serve(t, app, http.MethodGet, "/api")
+	if rec.Code != http.StatusTemporaryRedirect {
+		t.Errorf("GET /api = %d, want %d", rec.Code, http.StatusTemporaryRedirect)
+	}
+	if loc := rec.Header().Get("Location"); loc != "/api/" {
+		t.Errorf("Location = %q, want %q", loc, "/api/")
+	}
+}
+
+func TestHandler(t *testing.T) {
+	app := NewApp()
+	app.Get("/hello", markHandler("hello"))
+
+	req := httptest.NewRequest(http.MethodGet, "/hello", nil)
+	h, pattern := app.Handler(req)
+	if pattern != "GET /hello" {
+		t.Errorf("pattern = %q, want %q", pattern, "GET /hello")
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Body.String() != "hello" {
+		t.Errorf("handler body = %q, want %q", rec.Body.String(), "hello")
+	}
+
+	// An unmatched path yields the NotFound handler and an empty pattern.
+	req = httptest.NewRequest(http.MethodGet, "/nope", nil)
+	h, pattern = app.Handler(req)
+	if pattern != "" {
+		t.Errorf("pattern = %q, want empty", pattern)
+	}
+	if h == nil {
+		t.Fatal("Handler returned nil handler for an unmatched path")
+	}
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("unmatched handler status = %d, want %d", rec.Code, http.StatusNotFound)
+	}
+}
+
+func TestMethodNotAllowed(t *testing.T) {
+	app := NewApp()
+	app.Get("/items", markHandler("items"))
+	rec := serve(t, app, http.MethodPost, "/items")
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("POST /items = %d, want %d", rec.Code, http.StatusMethodNotAllowed)
+	}
+	if allow := rec.Header().Get("Allow"); !strings.Contains(allow, http.MethodGet) {
+		t.Errorf("Allow = %q, want it to contain %q", allow, http.MethodGet)
+	}
+}
+
+func TestConflictingPatternPanics(t *testing.T) {
+	app := NewApp()
+	app.Get("/a/{x}", markHandler("first"))
+	defer func() {
+		if recover() == nil {
+			t.Error("Handle did not panic on a conflicting pattern")
+		}
+	}()
+	// "/a/b" conflicts with "GET /a/{x}": each matches a request the other does not.
+	app.Handle("/a/b", markHandler("second"))
+}

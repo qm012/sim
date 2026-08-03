@@ -5,7 +5,10 @@
 package sim
 
 import (
+	"log/slog"
+	"net"
 	"net/http"
+	"slices"
 )
 
 // App is an HTTP router built on top of [http.ServeMux], extending
@@ -14,18 +17,32 @@ import (
 // using the same syntax and precedence rules as [http.ServeMux].
 // App implements [http.Handler]; create one with [NewApp].
 type App struct {
+	// mux routes requests to registered handlers. Pattern matching
+	// and precedence follow [http.ServeMux].
 	mux *http.ServeMux
+
+	// ss holds the wrappers applied to every registered handler.
+	// They wrap in order: ss[0] is outermost, receives the request
+	// first, and its response is what the caller ultimately sees —
+	// the same composition as [Chain].
+	ss []func(http.Handler) http.Handler
 }
 
 // NewApp returns a new [App] value.
 func NewApp() *App {
-	return &App{
-		mux: http.NewServeMux(),
-	}
+	return &App{mux: http.NewServeMux()}
 }
 
 var _ Router = (*App)(nil)
 var _ http.Handler = (*App)(nil)
+
+// Use registers the given wrappers and applies them to every handler
+// registered after this call. Wrappers run in registration order:
+// the first is outermost and receives the request first, the same
+// composition as [Chain].
+func (a *App) Use(ss ...func(http.Handler) http.Handler) {
+	a.ss = append(a.ss, ss...)
+}
 
 // Handle registers the handler for the given pattern, with the same
 // behavior as [http.ServeMux.Handle] and [http.Handle].
@@ -100,10 +117,42 @@ func (a *App) Handler(r *http.Request) (h http.Handler, pattern string) {
 // The pattern may include a method prefix, e.g. "GET /path" (see
 // [http.ServeMux]); without one, h is registered for all methods.
 func (a *App) handle(pattern string, h http.Handler) {
-	a.mux.Handle(pattern, h)
+	a.mux.Handle(pattern, Chain(a.ss...)(h))
+	slog.Debug("route registered", "pattern", pattern)
 }
 
 // ServeHTTP implements the http.Handler interface.
 func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	a.mux.ServeHTTP(w, r)
+}
+
+// Run listens on the given TCP address and serves requests,
+// blocking until the server fails; it returns the error from
+// [http.Serve]. Use [http.Server] for graceful shutdown.
+func (a *App) Run(addr string) error {
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+	slog.Info("listening and serving HTTP", "addr", ln.Addr().String())
+	return http.Serve(ln, a)
+}
+
+// Chain returns a function that composes the given wrappers into a single
+// wrapper. Applying the returned function to a handler h returns a new
+// handler that runs each wrapper in order: ss[0] is outermost,
+// receives the request first, and its response is what the caller ultimately
+// sees.
+//
+// Chain(Logging, Auth)(h) is equivalent to Logging(Auth(h)).
+// With no wrappers, Chain returns a function that leaves its argument
+// unchanged.
+func Chain(ss ...func(http.Handler) http.Handler) func(http.Handler) http.Handler {
+	ss = slices.Clone(ss)
+	return func(h http.Handler) http.Handler {
+		for i := len(ss) - 1; i >= 0; i-- {
+			h = ss[i](h)
+		}
+		return h
+	}
 }

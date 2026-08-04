@@ -150,8 +150,8 @@ func (a *App) Run(addr string) error {
 func Chain(ss ...func(http.Handler) http.Handler) func(http.Handler) http.Handler {
 	ss = slices.Clone(ss)
 	return func(h http.Handler) http.Handler {
-		for i := len(ss) - 1; i >= 0; i-- {
-			h = ss[i](h)
+		for _, s := range slices.Backward(ss) {
+			h = s(h)
 		}
 		return h
 	}

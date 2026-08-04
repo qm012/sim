@@ -19,6 +19,10 @@ import (
 // using the same syntax and precedence rules as [http.ServeMux].
 // App implements [http.Handler]; create one with [NewApp].
 type App struct {
+	// basePath is the path prefix prepended to every pattern
+	// registered on this router.
+	basePath string
+
 	// mux routes requests to registered handlers. Pattern matching
 	// and precedence follow [http.ServeMux].
 	mux *http.ServeMux
@@ -115,6 +119,22 @@ func (a *App) Trace(path string, handlerFunc http.HandlerFunc) {
 // Handler returns the handler and the matching pattern for the given request.
 func (a *App) Handler(r *http.Request) (http.Handler, string) {
 	return a.mux.Handler(r)
+}
+
+// Group creates a new router group with the given relative path
+// and invokes fn with it. Routes registered by fn are resolved
+// relative to the group's path (see [Router.Group]).
+// If fn is nil, Group does nothing.
+func (a *App) Group(relativePath string, fn func(r Router)) {
+	if fn == nil {
+		return
+	}
+	app := &App{
+		mux:      a.mux,
+		basePath: a.basePath + relativePath,
+	}
+
+	fn(app)
 }
 
 // handle registers h on the mux for the given pattern.

@@ -1,0 +1,36 @@
+name: Testing
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - 'main'
+  push:
+    branches:
+      - 'main'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        go-version: ["1.27.0-rc.2"]
+    name: ${{ matrix.os }} @ Go ${{ matrix.go-version }}
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Fetch Code
+        uses: actions/checkout@v7
+
+      - name: Set up Go ${{ matrix.go-version }}
+        uses: actions/setup-go@v7
+        with:
+          go-version: ${{ matrix.go-version }}
+
+      - name: Check Go version
+        run: go version
+
+      - name: Run Tests
+        run: make test

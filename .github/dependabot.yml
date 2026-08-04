@@ -13,14 +13,14 @@ updates:
         patterns:
           - "*"
     schedule:
-      interval: "weekly"
+      interval: "daily"
+    commit-message:
+      prefix: "chore(deps)"
   - package-ecosystem: "gomod" # See documentation for possible values
     directory: "/" # Location of package manifests
     labels:
       - "🤖 Dependencies"
-    groups:
-      go-deps:
-        patterns:
-          - "*"
     schedule:
-      interval: "weekly"
+      interval: "daily"
+    commit-message:
+      prefix: "chore(deps)"

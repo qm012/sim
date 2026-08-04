@@ -21,12 +21,24 @@ func markHandler(mark string) http.HandlerFunc {
 	}
 }
 
+// wrapHeader returns a wrapper that adds key: value to the response
+// header before delegating to the inner handler, like real middlewares
+// that mark their work on the response.
+func wrapHeader(key, value string) func(http.Handler) http.Handler {
+	return func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Add(key, value)
+			h.ServeHTTP(w, r)
+		})
+	}
+}
+
 // serve performs an HTTP request against app and returns the recorder.
-func serve(t *testing.T, app http.Handler, method, target string) *httptest.ResponseRecorder {
+func serve(t *testing.T, h http.Handler, method, target string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(method, target, nil)
 	rec := httptest.NewRecorder()
-	app.ServeHTTP(rec, req)
+	h.ServeHTTP(rec, req)
 	return rec
 }
 
@@ -88,37 +100,31 @@ func TestGetPatternAlsoMatchesHead(t *testing.T) {
 	}
 }
 
-func TestAnyMatchesAllMethods(t *testing.T) {
-	app := NewApp()
-	app.Any("/any", markHandler("any"))
-	for _, method := range allMethods {
-		rec := serve(t, app, method, "/any")
-		if rec.Code != http.StatusOK {
-			t.Errorf("%s /any = %d, want %d", method, rec.Code, http.StatusOK)
-		}
-		if got := rec.Body.String(); got != "any" {
-			t.Errorf("%s /any body = %q, want %q", method, got, "any")
-		}
+// TestAllMethodsRegistration verifies that handlers registered via Any,
+// Handle, and HandleFunc are served for every HTTP method.
+func TestAllMethodsRegistration(t *testing.T) {
+	tests := []struct {
+		name     string
+		register func(a *App, path string, h http.HandlerFunc)
+	}{
+		{"Any", (*App).Any},
+		{"Handle", func(a *App, path string, h http.HandlerFunc) { a.Handle(path, h) }},
+		{"HandleFunc", (*App).HandleFunc},
 	}
-}
-
-func TestHandleMatchesAllMethods(t *testing.T) {
-	app := NewApp()
-	app.Handle("/all", markHandler("handle"))
-	for _, method := range allMethods {
-		if rec := serve(t, app, method, "/all"); rec.Code != http.StatusOK {
-			t.Errorf("%s /all = %d, want %d", method, rec.Code, http.StatusOK)
-		}
-	}
-}
-
-func TestHandleFuncMatchesAllMethods(t *testing.T) {
-	app := NewApp()
-	app.HandleFunc("/all", markHandler("handlefunc"))
-	for _, method := range allMethods {
-		if rec := serve(t, app, method, "/all"); rec.Code != http.StatusOK {
-			t.Errorf("%s /all = %d, want %d", method, rec.Code, http.StatusOK)
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app := NewApp()
+			tt.register(app, "/all", markHandler("all"))
+			for _, method := range allMethods {
+				rec := serve(t, app, method, "/all")
+				if rec.Code != http.StatusOK {
+					t.Errorf("%s /all = %d, want %d", method, rec.Code, http.StatusOK)
+				}
+				if got := rec.Body.String(); got != "all" {
+					t.Errorf("%s /all body = %q, want %q", method, got, "all")
+				}
+			}
+		})
 	}
 }
 
@@ -222,4 +228,122 @@ func TestConflictingPatternPanics(t *testing.T) {
 	}()
 	// "/a/b" conflicts with "GET /a/{x}": each matches a request the other does not.
 	app.Handle("/a/b", markHandler("second"))
+}
+
+func TestChainEquivalentToNestedApplication(t *testing.T) {
+	h := markHandler("h")
+	rec1 := serve(t, Chain(
+		wrapHeader("X-Order", "a"),
+		wrapHeader("X-Order", "b"),
+		wrapHeader("X-Order", "c"),
+	)(h), http.MethodGet, "/")
+	rec2 := serve(t, wrapHeader("X-Order", "a")(
+		wrapHeader("X-Order", "b")(
+			wrapHeader("X-Order", "c")(h))),
+		http.MethodGet, "/")
+
+	if got, want := strings.Join(rec1.Header().Values("X-Order"), ""),
+		strings.Join(rec2.Header().Values("X-Order"), ""); got != want || got != "abc" {
+		t.Errorf("Chain(a,b,c)(h) order = %q, a(b(c(h))) order = %q, want equal and %q", got, want, "abc")
+	}
+	if got, want := rec1.Body.String(), rec2.Body.String(); got != want {
+		t.Errorf("Chain(a,b,c)(h) body = %q, a(b(c(h))) body = %q, want equal", got, want)
+	}
+}
+
+func TestChainClonesInput(t *testing.T) {
+	ss := []func(http.Handler) http.Handler{wrapHeader("X-Wrapped", "1")}
+	c := Chain(ss...)
+	// Mutating the caller's slice after Chain must not change the composition.
+	ss[0] = wrapHeader("X-Wrapped", "2")
+	rec := serve(t, c(markHandler("h")), http.MethodGet, "/")
+	if got := rec.Header().Get("X-Wrapped"); got != "1" {
+		t.Errorf("composition changed after source slice mutation: got %q, want %q", got, "1")
+	}
+}
+
+func TestUseAppliesToSubsequentHandlers(t *testing.T) {
+	app := NewApp()
+	var r Router = app
+
+	// Registered before Use: not wrapped.
+	r.Get("/pre", markHandler("pre"))
+	r.Use(wrapHeader("X-Wrapped", "yes"))
+	r.Get("/post", markHandler("post"))
+
+	rec := serve(t, app, http.MethodGet, "/pre")
+	if got := rec.Header().Get("X-Wrapped"); got != "" {
+		t.Errorf("handler registered before Use was wrapped: got %q, want empty", got)
+	}
+	if got := rec.Body.String(); got != "pre" {
+		t.Errorf("GET /pre body = %q, want %q", got, "pre")
+	}
+	rec = serve(t, app, http.MethodGet, "/post")
+	if got := rec.Header().Get("X-Wrapped"); got != "yes" {
+		t.Errorf("handler registered after Use was not wrapped: got %q, want %q", got, "yes")
+	}
+	if got := rec.Body.String(); got != "post" {
+		t.Errorf("GET /post body = %q, want %q", got, "post")
+	}
+}
+
+func TestUseAccumulatesInOrder(t *testing.T) {
+	app := NewApp()
+	app.Use(wrapHeader("X-Order", "a"))
+	app.Use(wrapHeader("X-Order", "b"))
+	app.Get("/", markHandler("h"))
+	// The first Use call is outermost, so it records its name first.
+	if got := strings.Join(
+		serve(t, app, http.MethodGet, "/").Header().Values("X-Order"),
+		""); got != "ab" {
+		t.Errorf("wrapper order = %q, want %q", got, "ab")
+	}
+}
+
+func TestUseEmptyIsNoop(t *testing.T) {
+	app := NewApp()
+	app.Use()
+	app.Get("/", markHandler("h"))
+	if got := serve(t, app, http.MethodGet, "/").Body.String(); got != "h" {
+		t.Errorf("body = %q, want %q", got, "h")
+	}
+}
+
+func TestUseAppliesToAnyAndHandle(t *testing.T) {
+	app := NewApp()
+	app.Use(wrapHeader("X-Wrapped", "yes"))
+	app.Any("/any", markHandler("any"))
+	app.Handle("/all", markHandler("all"))
+	for _, tt := range []struct{ method, path string }{
+		{http.MethodGet, "/any"},
+		{http.MethodPost, "/all"},
+	} {
+		rec := serve(t, app, tt.method, tt.path)
+		if got := rec.Header().Get("X-Wrapped"); got != "yes" {
+			t.Errorf("%s %s was not wrapped: got %q, want %q", tt.method, tt.path, got, "yes")
+		}
+	}
+}
+
+func TestUseWrapperSeesRequestFirst(t *testing.T) {
+	app := NewApp()
+	app.Use(func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r.Header.Set("X-Wrapped", "yes")
+			h.ServeHTTP(w, r)
+		})
+	})
+	app.Get("/", func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, r.Header.Get("X-Wrapped"))
+	})
+	if got := serve(t, app, http.MethodGet, "/").Body.String(); got != "yes" {
+		t.Errorf("handler did not see the header set by the wrapper: got %q, want %q", got, "yes")
+	}
+}
+
+func TestRunInvalidAddr(t *testing.T) {
+	app := NewApp()
+	if err := app.Run("localhost:99999xxx"); err == nil {
+		t.Error("Run with an invalid port returned nil error")
+	}
 }

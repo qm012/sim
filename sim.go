@@ -23,6 +23,12 @@ var allMethods = []string{
 // Router consisting of the core routing methods implemented by App,
 // using only the standard net/http.
 type Router interface {
+	// Use registers the given wrappers and applies them to every handler
+	// registered after this call. Wrappers run in registration order:
+	// the first is outermost and receives the request first, the same
+	// composition as [Chain].
+	Use(ss ...func(http.Handler) http.Handler)
+
 	// Handle registers the handler for the given pattern, with the same
 	// behavior as [http.ServeMux.Handle] and [http.Handle].
 	Handle(pattern string, handler http.Handler)

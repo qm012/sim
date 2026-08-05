@@ -7,7 +7,6 @@ package sim
 import (
 	"context"
 	"fmt"
-
 	"log/slog"
 	"net"
 	"net/http"

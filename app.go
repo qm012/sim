@@ -5,10 +5,13 @@
 package sim
 
 import (
+	"context"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
 	"slices"
+	"time"
 )
 
 // App is an HTTP router built on top of [http.ServeMux], extending
@@ -33,8 +36,10 @@ func NewApp() *App {
 	return &App{mux: http.NewServeMux()}
 }
 
-var _ Router = (*App)(nil)
-var _ http.Handler = (*App)(nil)
+var (
+	_ Router       = (*App)(nil)
+	_ http.Handler = (*App)(nil)
+)
 
 // Use registers the given wrappers and applies them to every handler
 // registered after this call. Wrappers run in registration order:
@@ -109,7 +114,7 @@ func (a *App) Trace(path string, handlerFunc http.HandlerFunc) {
 }
 
 // Handler returns the handler and the matching pattern for the given request.
-func (a *App) Handler(r *http.Request) (h http.Handler, pattern string) {
+func (a *App) Handler(r *http.Request) (http.Handler, string) {
 	return a.mux.Handler(r)
 }
 
@@ -126,16 +131,43 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	a.mux.ServeHTTP(w, r)
 }
 
-// Run listens on the given TCP address and serves requests,
-// blocking until the server fails; it returns the error from
-// [http.Serve]. Use [http.Server] for graceful shutdown.
-func (a *App) Run(addr string) error {
-	ln, err := net.Listen("tcp", addr)
+// shutdownTimeout bounds how long a graceful shutdown may wait for
+// in-flight requests to complete.
+const shutdownTimeout = 10 * time.Second
+
+// Run listens on the given TCP address and serves HTTP requests until ctx
+// is canceled or the server fails. If ctx is canceled, Run shuts the
+// server down gracefully and returns nil.
+func (a *App) Run(ctx context.Context, addr string) error {
+	var lc net.ListenConfig
+	ln, err := lc.Listen(ctx, "tcp", addr)
 	if err != nil {
-		return err
+		return fmt.Errorf("listen on %s: %w", addr, err)
 	}
-	slog.Info("listening and serving HTTP", "addr", ln.Addr().String())
-	return http.Serve(ln, a)
+	slog.DebugContext(ctx, "listening and serving HTTP", "addr", ln.Addr().String())
+	server := &http.Server{ // #nosec G112
+		Handler: a,
+	}
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- server.Serve(ln)
+	}()
+
+	select {
+	case err = <-errCh:
+		return fmt.Errorf("http serve: %w", err)
+	case <-ctx.Done():
+	}
+
+	slog.InfoContext(context.WithoutCancel(ctx), "shutting down HTTP server", "addr", ln.Addr().String())
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
+	//nolint:contextcheck // shutdown must use a fresh context; the incoming ctx is already canceled
+	if err = server.Shutdown(shutdownCtx); err != nil {
+		return fmt.Errorf("graceful shutdown: %w", err)
+	}
+	slog.Info("HTTP server shut down gracefully")
+	return nil
 }
 
 // Chain returns a function that composes the given wrappers into a single

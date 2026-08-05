@@ -1,0 +1,120 @@
+version: "2"
+run:
+  modules-download-mode: readonly
+
+linters:
+  enable:
+    - bodyclose
+    - copyloopvar
+    - dogsled
+    - dupl
+    - errcheck
+    - errorlint
+    - funlen
+    - gocheckcompilerdirectives
+    - gochecknoinits
+    - goconst
+    - gocritic
+    - gocyclo
+    - godox
+    - mnd
+    - goprintffuncname
+    - gosec
+    - govet
+    - intrange
+    - ineffassign
+    - lll
+    - misspell
+    - nakedret
+    - noctx
+    - nolintlint
+    - revive
+    - staticcheck
+    - unconvert
+    - unparam
+    - unused
+    - whitespace
+    - asasalint
+    - asciicheck
+    - bidichk
+    - containedctx
+    - contextcheck
+    - decorder
+    - depguard
+    - dupword
+    - durationcheck
+    - err113
+    - errname
+    - exhaustive
+    - forbidigo
+    - forcetypeassert
+    - gochecksumtype
+    - gomoddirectives
+    - grouper
+    - loggercheck
+    - makezero
+    - mirror
+    - modernize
+    - nilerr
+    - nilnil
+    - nonamedreturns
+    - nosprintfhostport
+    - perfsprint
+    - predeclared
+    - reassign
+    - sloglint
+    - testableexamples
+    - thelper
+    - tparallel
+    - usestdlibvars
+    - wrapcheck
+    - wastedassign
+  settings:
+    depguard:
+      rules:
+        main:
+          deny:
+            - pkg: "!$gostd"
+              desc: "third-party packages are not allowed in this repository"
+            - pkg: "io/ioutil"
+              desc: "io/ioutil is deprecated; use the corresponding 'os' or 'io' functions instead"
+    errcheck:
+      check-type-assertions: true
+    forbidigo:
+      forbid:
+        - pattern: ^print(ln)?$
+        - pattern: ^fmt\.Print(f|ln)?$
+        - pattern: ^http\.Default(Client|ServeMux|Transport)$
+      analyze-types: true
+    goconst:
+      ignore-tests: true
+    grouper:
+      import-require-single-import: true
+      import-require-grouping: true
+    loggercheck:
+      require-string-key: true
+      no-printf-like: true
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+    perfsprint:
+      err-error: true
+  exclusions:
+    generated: lax
+    rules:
+      - path: _test\.go
+        linters:
+          - gosec
+formatters:
+  enable:
+    - gofmt
+    - gofumpt
+    - goimports
+  settings:
+    gofmt:
+      rewrite-rules:
+        - pattern: 'interface{}'
+          replacement: 'any'
+    gofumpt:
+      module-path: github.com/qm012/sim
+      extra-rules: true

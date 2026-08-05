@@ -17,7 +17,7 @@ import (
 // used to verify which registered handler served a request.
 func markHandler(mark string) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
-		io.WriteString(w, mark)
+		_, _ = io.WriteString(w, mark)
 	}
 }
 
@@ -36,7 +36,7 @@ func wrapHeader(key, value string) func(http.Handler) http.Handler {
 // serve performs an HTTP request against app and returns the recorder.
 func serve(t *testing.T, h http.Handler, method, target string) *httptest.ResponseRecorder {
 	t.Helper()
-	req := httptest.NewRequest(method, target, nil)
+	req := httptest.NewRequestWithContext(t.Context(), method, target, nil)
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	return rec
@@ -131,7 +131,7 @@ func TestAllMethodsRegistration(t *testing.T) {
 func TestWildcardPathValue(t *testing.T) {
 	app := NewApp()
 	app.Get("/users/{id}", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "user:%v", r.PathValue("id"))
+		_, _ = fmt.Fprintf(w, "user:%v", r.PathValue("id"))
 	})
 	rec := serve(t, app, http.MethodGet, "/users/42")
 	if rec.Code != http.StatusOK || rec.Body.String() != "user:42" {
@@ -179,7 +179,7 @@ func TestHandler(t *testing.T) {
 	app := NewApp()
 	app.Get("/hello", markHandler("hello"))
 
-	req := httptest.NewRequest(http.MethodGet, "/hello", nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/hello", nil)
 	h, pattern := app.Handler(req)
 	if pattern != "GET /hello" {
 		t.Errorf("pattern = %q, want %q", pattern, "GET /hello")
@@ -191,7 +191,7 @@ func TestHandler(t *testing.T) {
 	}
 
 	// An unmatched path yields the NotFound handler and an empty pattern.
-	req = httptest.NewRequest(http.MethodGet, "/nope", nil)
+	req = httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/nope", nil)
 	h, pattern = app.Handler(req)
 	if pattern != "" {
 		t.Errorf("pattern = %q, want empty", pattern)
@@ -334,7 +334,7 @@ func TestUseWrapperSeesRequestFirst(t *testing.T) {
 		})
 	})
 	app.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		io.WriteString(w, r.Header.Get("X-Wrapped"))
+		_, _ = io.WriteString(w, r.Header.Get("X-Wrapped"))
 	})
 	if got := serve(t, app, http.MethodGet, "/").Body.String(); got != "yes" {
 		t.Errorf("handler did not see the header set by the wrapper: got %q, want %q", got, "yes")
@@ -343,7 +343,7 @@ func TestUseWrapperSeesRequestFirst(t *testing.T) {
 
 func TestRunInvalidAddr(t *testing.T) {
 	app := NewApp()
-	if err := app.Run("localhost:99999xxx"); err == nil {
+	if err := app.Run(t.Context(), "localhost:99999xxx"); err == nil {
 		t.Error("Run with an invalid port returned nil error")
 	}
 }

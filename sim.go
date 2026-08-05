@@ -2,9 +2,13 @@
 // Use of this source code is governed by a MIT license
 // that can be found in the LICENSE file.
 
+// Package sim provides an HTTP router built on [net/http.ServeMux],
+// extending it with method-based routing helpers.
 package sim
 
-import "net/http"
+import (
+	"net/http"
+)
 
 // allMethods is the complete list of HTTP request methods
 // defined by the net/http package.

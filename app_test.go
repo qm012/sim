@@ -262,6 +262,14 @@ func TestChainClonesInput(t *testing.T) {
 	}
 }
 
+func TestChainEmpty(t *testing.T) {
+	h := markHandler("h")
+	rec := serve(t, Chain()(h), http.MethodGet, "/")
+	if got := rec.Body.String(); got != "h" {
+		t.Errorf("Chain()(h) body = %q, want %q", got, "h")
+	}
+}
+
 func TestUseAppliesToSubsequentHandlers(t *testing.T) {
 	app := NewApp()
 	var r Router = app
@@ -343,7 +351,7 @@ func TestUseWrapperSeesRequestFirst(t *testing.T) {
 
 func TestRunInvalidAddr(t *testing.T) {
 	app := NewApp()
-	if err := app.Run(t.Context(), "localhost:99999xxx"); err == nil {
+	if err := app.Run(t.Context(), "localhost:99999"); err == nil {
 		t.Error("Run with an invalid port returned nil error")
 	}
 }

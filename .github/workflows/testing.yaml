@@ -17,7 +17,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
-        go-version: ["1.27.0-rc.2"]
+        go-version: ["1.26.x"]
     name: ${{ matrix.os }} @ Go ${{ matrix.go-version }}
     runs-on: ${{ matrix.os }}
     steps:

@@ -1,6 +1,6 @@
 .PHONY: test-unit
-test-unit: ## Run unit tests with coverage report
-	go test -v -covermode=atomic -coverpkg=./... ./...
+test-unit: ## Run unit tests
+	go test -v ./...
 
 .PHONY: test
 test: ## Run full test suite

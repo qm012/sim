@@ -27,3 +27,19 @@ func Chain(ss ...func(http.Handler) http.Handler) func(http.Handler) http.Handle
 		return h
 	}
 }
+
+// ChainFunc returns a function that composes the given wrappers into a
+// single wrapper over http.HandlerFunc handlers, the counterpart of Chain
+// for func-typed registration methods such as [App.Get] and [App.Put].
+//
+// The wrappers are the same func(http.Handler) http.Handler middleware
+// as Chain's, so middleware written for Chain works unchanged.
+//
+// With no wrappers, ChainFunc returns a function that leaves its argument
+// unchanged.
+func ChainFunc(ss ...func(http.Handler) http.Handler) func(http.HandlerFunc) http.HandlerFunc {
+	ss = slices.Clone(ss) // same defensive copy as Chain
+	return func(h http.HandlerFunc) http.HandlerFunc {
+		return Chain(ss...)(h).ServeHTTP
+	}
+}

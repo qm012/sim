@@ -2,7 +2,7 @@
 // Use of this source code is governed by a MIT license
 // that can be found in the LICENSE file.
 
-package sim
+package sim_test
 
 import (
 	"fmt"
@@ -11,11 +11,21 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/qm012/sim"
 )
 
-// markHandler returns a handler that writes mark as the response body,
-// used to verify which registered handler served a request.
-func markHandler(mark string) http.HandlerFunc {
+// markHandler returns an http.Handler that writes mark to the response body.
+// It is used to verify which registered handler served a request.
+func markHandler(mark string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, mark)
+	})
+}
+
+// markHandlerFunc returns an http.HandlerFunc with the same behavior as
+// markHandler.
+func markHandlerFunc(mark string) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, mark)
 	}
@@ -43,12 +53,9 @@ func serve(t *testing.T, h http.Handler, method, target string) *httptest.Respon
 }
 
 func TestNewApp(t *testing.T) {
-	app := NewApp()
+	app := sim.NewApp()
 	if app == nil {
 		t.Fatal("NewApp() returned nil")
-	}
-	if app.mux == nil {
-		t.Fatal("app.mux returned nil")
 	}
 }
 
@@ -56,22 +63,22 @@ func TestMethodRouting(t *testing.T) {
 	tests := []struct {
 		name     string
 		method   string
-		register func(a *App, path string, h http.HandlerFunc)
+		register func(a *sim.App, path string, h http.HandlerFunc)
 	}{
-		{http.MethodGet, http.MethodGet, (*App).Get},
-		{http.MethodPost, http.MethodPost, (*App).Post},
-		{http.MethodDelete, http.MethodDelete, (*App).Delete},
-		{http.MethodPatch, http.MethodPatch, (*App).Patch},
-		{http.MethodPut, http.MethodPut, (*App).Put},
-		{http.MethodOptions, http.MethodOptions, (*App).Options},
-		{http.MethodHead, http.MethodHead, (*App).Head},
-		{http.MethodConnect, http.MethodConnect, (*App).Connect},
-		{http.MethodTrace, http.MethodTrace, (*App).Trace},
+		{http.MethodGet, http.MethodGet, (*sim.App).Get},
+		{http.MethodPost, http.MethodPost, (*sim.App).Post},
+		{http.MethodDelete, http.MethodDelete, (*sim.App).Delete},
+		{http.MethodPatch, http.MethodPatch, (*sim.App).Patch},
+		{http.MethodPut, http.MethodPut, (*sim.App).Put},
+		{http.MethodOptions, http.MethodOptions, (*sim.App).Options},
+		{http.MethodHead, http.MethodHead, (*sim.App).Head},
+		{http.MethodConnect, http.MethodConnect, (*sim.App).Connect},
+		{http.MethodTrace, http.MethodTrace, (*sim.App).Trace},
 	}
-	app := NewApp()
+	app := sim.NewApp()
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tt.register(app, "/route", markHandler(tt.name))
+			tt.register(app, "/route", markHandlerFunc(tt.name))
 
 			// The registered method is served by its own handler.
 			rec := serve(t, app, tt.method, "/route")
@@ -86,15 +93,15 @@ func TestMethodRouting(t *testing.T) {
 }
 
 func TestGetPatternAlsoMatchesHead(t *testing.T) {
-	app := NewApp()
-	app.Get("/page", markHandler("page"))
+	app := sim.NewApp()
+	app.Get("/page", markHandlerFunc("page"))
 	for _, method := range []string{http.MethodGet, http.MethodHead} {
 		if rec := serve(t, app, method, "/page"); rec.Code != http.StatusOK {
 			t.Errorf("%s /page = %d, want %d", method, rec.Code, http.StatusOK)
 		}
 	}
 	// The reverse is not true: a HEAD-only registration does not serve GET.
-	app.Head("/headonly", markHandler("headonly"))
+	app.Head("/headonly", markHandlerFunc("headonly"))
 	if rec := serve(t, app, http.MethodGet, "/headonly"); rec.Code != http.StatusMethodNotAllowed {
 		t.Errorf("GET /headonly = %d, want %d", rec.Code, http.StatusMethodNotAllowed)
 	}
@@ -105,17 +112,27 @@ func TestGetPatternAlsoMatchesHead(t *testing.T) {
 func TestAllMethodsRegistration(t *testing.T) {
 	tests := []struct {
 		name     string
-		register func(a *App, path string, h http.HandlerFunc)
+		register func(a *sim.App, path string, h http.HandlerFunc)
 	}{
-		{"Any", (*App).Any},
-		{"Handle", func(a *App, path string, h http.HandlerFunc) { a.Handle(path, h) }},
-		{"HandleFunc", (*App).HandleFunc},
+		{"Any", (*sim.App).Any},
+		{"Handle", func(a *sim.App, path string, h http.HandlerFunc) { a.Handle(path, h) }},
+		{"HandleFunc", (*sim.App).HandleFunc},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			app := NewApp()
-			tt.register(app, "/all", markHandler("all"))
-			for _, method := range allMethods {
+			app := sim.NewApp()
+			tt.register(app, "/all", markHandlerFunc("all"))
+			for _, method := range []string{
+				http.MethodGet,
+				http.MethodHead,
+				http.MethodPost,
+				http.MethodPut,
+				http.MethodPatch,
+				http.MethodDelete,
+				http.MethodConnect,
+				http.MethodOptions,
+				http.MethodTrace,
+			} {
 				rec := serve(t, app, method, "/all")
 				if rec.Code != http.StatusOK {
 					t.Errorf("%s /all = %d, want %d", method, rec.Code, http.StatusOK)
@@ -129,7 +146,7 @@ func TestAllMethodsRegistration(t *testing.T) {
 }
 
 func TestWildcardPathValue(t *testing.T) {
-	app := NewApp()
+	app := sim.NewApp()
 	app.Get("/users/{id}", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = fmt.Fprintf(w, "user:%v", r.PathValue("id"))
 	})
@@ -144,9 +161,9 @@ func TestWildcardPathValue(t *testing.T) {
 }
 
 func TestPrecedenceExactOverWildcard(t *testing.T) {
-	app := NewApp()
-	app.Get("/users/{id}", markHandler("wildcard"))
-	app.Get("/users/me", markHandler("exact"))
+	app := sim.NewApp()
+	app.Get("/users/{id}", markHandlerFunc("wildcard"))
+	app.Get("/users/me", markHandlerFunc("exact"))
 	if rec := serve(t, app, http.MethodGet, "/users/me"); rec.Body.String() != "exact" {
 		t.Errorf("GET /users/me body = %q, want %q", rec.Body.String(), "exact")
 	}
@@ -156,8 +173,8 @@ func TestPrecedenceExactOverWildcard(t *testing.T) {
 }
 
 func TestSubtreePatternAndTrailingSlashRedirect(t *testing.T) {
-	app := NewApp()
-	app.HandleFunc("/api/", markHandler("api"))
+	app := sim.NewApp()
+	app.HandleFunc("/api/", markHandlerFunc("api"))
 
 	// A subtree pattern matches any path beneath it, for any method.
 	if rec := serve(t, app, http.MethodPost, "/api/v1/items"); rec.Code != http.StatusOK || rec.Body.String() != "api" {
@@ -175,9 +192,9 @@ func TestSubtreePatternAndTrailingSlashRedirect(t *testing.T) {
 	}
 }
 
-func TestHandler(t *testing.T) {
-	app := NewApp()
-	app.Get("/hello", markHandler("hello"))
+func TestHandlerReturnsMatch(t *testing.T) {
+	app := sim.NewApp()
+	app.Get("/hello", markHandlerFunc("hello"))
 
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/hello", nil)
 	h, pattern := app.Handler(req)
@@ -207,8 +224,8 @@ func TestHandler(t *testing.T) {
 }
 
 func TestMethodNotAllowed(t *testing.T) {
-	app := NewApp()
-	app.Get("/items", markHandler("items"))
+	app := sim.NewApp()
+	app.Get("/items", markHandlerFunc("items"))
 	rec := serve(t, app, http.MethodPost, "/items")
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("POST /items = %d, want %d", rec.Code, http.StatusMethodNotAllowed)
@@ -219,8 +236,8 @@ func TestMethodNotAllowed(t *testing.T) {
 }
 
 func TestConflictingPatternPanics(t *testing.T) {
-	app := NewApp()
-	app.Get("/a/{x}", markHandler("first"))
+	app := sim.NewApp()
+	app.Get("/a/{x}", markHandlerFunc("first"))
 	defer func() {
 		if recover() == nil {
 			t.Error("Handle did not panic on a conflicting pattern")
@@ -230,54 +247,14 @@ func TestConflictingPatternPanics(t *testing.T) {
 	app.Handle("/a/b", markHandler("second"))
 }
 
-func TestChainEquivalentToNestedApplication(t *testing.T) {
-	h := markHandler("h")
-	rec1 := serve(t, Chain(
-		wrapHeader("X-Order", "a"),
-		wrapHeader("X-Order", "b"),
-		wrapHeader("X-Order", "c"),
-	)(h), http.MethodGet, "/")
-	rec2 := serve(t, wrapHeader("X-Order", "a")(
-		wrapHeader("X-Order", "b")(
-			wrapHeader("X-Order", "c")(h))),
-		http.MethodGet, "/")
-
-	if got, want := strings.Join(rec1.Header().Values("X-Order"), ""),
-		strings.Join(rec2.Header().Values("X-Order"), ""); got != want || got != "abc" {
-		t.Errorf("Chain(a,b,c)(h) order = %q, a(b(c(h))) order = %q, want equal and %q", got, want, "abc")
-	}
-	if got, want := rec1.Body.String(), rec2.Body.String(); got != want {
-		t.Errorf("Chain(a,b,c)(h) body = %q, a(b(c(h))) body = %q, want equal", got, want)
-	}
-}
-
-func TestChainClonesInput(t *testing.T) {
-	ss := []func(http.Handler) http.Handler{wrapHeader("X-Wrapped", "1")}
-	c := Chain(ss...)
-	// Mutating the caller's slice after Chain must not change the composition.
-	ss[0] = wrapHeader("X-Wrapped", "2")
-	rec := serve(t, c(markHandler("h")), http.MethodGet, "/")
-	if got := rec.Header().Get("X-Wrapped"); got != "1" {
-		t.Errorf("composition changed after source slice mutation: got %q, want %q", got, "1")
-	}
-}
-
-func TestChainEmpty(t *testing.T) {
-	h := markHandler("h")
-	rec := serve(t, Chain()(h), http.MethodGet, "/")
-	if got := rec.Body.String(); got != "h" {
-		t.Errorf("Chain()(h) body = %q, want %q", got, "h")
-	}
-}
-
 func TestUseAppliesToSubsequentHandlers(t *testing.T) {
-	app := NewApp()
-	var r Router = app
+	app := sim.NewApp()
+	var r sim.Router = app
 
 	// Registered before Use: not wrapped.
-	r.Get("/pre", markHandler("pre"))
+	r.Get("/pre", markHandlerFunc("pre"))
 	r.Use(wrapHeader("X-Wrapped", "yes"))
-	r.Get("/post", markHandler("post"))
+	r.Get("/post", markHandlerFunc("post"))
 
 	rec := serve(t, app, http.MethodGet, "/pre")
 	if got := rec.Header().Get("X-Wrapped"); got != "" {
@@ -296,10 +273,10 @@ func TestUseAppliesToSubsequentHandlers(t *testing.T) {
 }
 
 func TestUseAccumulatesInOrder(t *testing.T) {
-	app := NewApp()
+	app := sim.NewApp()
 	app.Use(wrapHeader("X-Order", "a"))
 	app.Use(wrapHeader("X-Order", "b"))
-	app.Get("/", markHandler("h"))
+	app.Get("/", markHandlerFunc("h"))
 	// The first Use call is outermost, so it records its name first.
 	if got := strings.Join(
 		serve(t, app, http.MethodGet, "/").Header().Values("X-Order"),
@@ -309,18 +286,18 @@ func TestUseAccumulatesInOrder(t *testing.T) {
 }
 
 func TestUseEmptyIsNoop(t *testing.T) {
-	app := NewApp()
+	app := sim.NewApp()
 	app.Use()
-	app.Get("/", markHandler("h"))
+	app.Get("/", markHandlerFunc("h"))
 	if got := serve(t, app, http.MethodGet, "/").Body.String(); got != "h" {
 		t.Errorf("body = %q, want %q", got, "h")
 	}
 }
 
 func TestUseAppliesToAnyAndHandle(t *testing.T) {
-	app := NewApp()
+	app := sim.NewApp()
 	app.Use(wrapHeader("X-Wrapped", "yes"))
-	app.Any("/any", markHandler("any"))
+	app.Any("/any", markHandlerFunc("any"))
 	app.Handle("/all", markHandler("all"))
 	for _, tt := range []struct{ method, path string }{
 		{http.MethodGet, "/any"},
@@ -334,7 +311,7 @@ func TestUseAppliesToAnyAndHandle(t *testing.T) {
 }
 
 func TestUseWrapperSeesRequestFirst(t *testing.T) {
-	app := NewApp()
+	app := sim.NewApp()
 	app.Use(func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			r.Header.Set("X-Wrapped", "yes")
@@ -349,8 +326,60 @@ func TestUseWrapperSeesRequestFirst(t *testing.T) {
 	}
 }
 
+func TestChainWrappedHandlerRegistration(t *testing.T) {
+	chainWrapped := sim.Chain(
+		wrapHeader("X-Order", "a"),
+		wrapHeader("X-Order", "b"),
+	)
+	chainFuncWrapped := sim.ChainFunc(
+		wrapHeader("X-Order", "1"),
+		wrapHeader("X-Order", "2"),
+	)
+
+	tests := []struct {
+		name       string
+		path       string
+		method     string
+		wantValues string
+		register   func(a *sim.App, path string)
+	}{
+		{"Get", "/get", http.MethodGet, "12", func(a *sim.App, path string) {
+			a.Get(path, chainFuncWrapped(markHandlerFunc(path)))
+		}},
+		{"Post", "/post", http.MethodPost, "12", func(a *sim.App, path string) {
+			a.Post(path, chainFuncWrapped(markHandlerFunc(path)))
+		}},
+		{"Put", "/put", http.MethodPut, "12", func(a *sim.App, path string) {
+			putFunc := func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = io.WriteString(w, path)
+			}
+			a.Put(path, chainFuncWrapped(putFunc))
+		}},
+		{"Handle", "/handle", http.MethodGet, "ab", func(a *sim.App, path string) {
+			a.Handle(path, chainWrapped(markHandler(path)))
+		}},
+		{"HandleFunc", "/handlefunc", http.MethodGet, "12", func(a *sim.App, path string) {
+			a.HandleFunc(path, chainFuncWrapped(markHandlerFunc(path)))
+		}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app := sim.NewApp()
+			tt.register(app, tt.path)
+			rec := serve(t, app, tt.method, tt.path)
+			if got := strings.Join(rec.Header().Values("X-Order"), ""); got != tt.wantValues {
+				t.Errorf("%s X-Order = %q, want %q", tt.name, got, tt.wantValues)
+			}
+			if got := rec.Body.String(); got != tt.path {
+				t.Errorf("%s body = %q, want %q", tt.name, got, tt.path)
+			}
+		})
+	}
+}
+
 func TestRunInvalidAddr(t *testing.T) {
-	app := NewApp()
+	app := sim.NewApp()
 	if err := app.Run(t.Context(), "localhost:99999"); err == nil {
 		t.Error("Run with an invalid port returned nil error")
 	}

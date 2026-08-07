@@ -24,7 +24,7 @@ func TestChainFuncEmpty(t *testing.T) {
 	h := markHandlerFunc("func")
 	rec := serve(t, sim.ChainFunc()(h), http.MethodGet, "/")
 	if got := rec.Body.String(); got != "func" {
-		t.Errorf("Chain()(h) body = %q, want %q", got, "h")
+		t.Errorf("ChainFunc()(h) body = %q, want %q", got, "func")
 	}
 }
 
@@ -43,7 +43,8 @@ func assertMatchesManualNesting(t *testing.T, name string, composed, manual http
 
 func TestChainMatchesManualNesting(t *testing.T) {
 	h := markHandler("xs")
-	assertMatchesManualNesting(t, "Chain(Recover, Logging, Auth)(h) = Recover(Logging(Auth(h)))",
+	assertMatchesManualNesting(t,
+		"Chain(Recover, Logging, Auth)(h) behaves like Recover(Logging(Auth(h)))",
 		sim.Chain(
 			wrapHeader("X-Order", "a"),
 			wrapHeader("X-Order", "b"),
@@ -56,7 +57,8 @@ func TestChainMatchesManualNesting(t *testing.T) {
 
 func TestChainFuncMatchesManualNesting(t *testing.T) {
 	f := markHandlerFunc("h")
-	assertMatchesManualNesting(t, "ChainFunc(Recover, Logging, Auth)(h) = Recover(Logging(Auth(h)))",
+	assertMatchesManualNesting(t,
+		"ChainFunc(Recover, Logging, Auth)(f) behaves like Recover(Logging(Auth(f)))",
 		sim.ChainFunc(
 			wrapHeader("X-Order", "a"),
 			wrapHeader("X-Order", "b"),

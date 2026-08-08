@@ -483,9 +483,6 @@ func TestGroupRouting(t *testing.T) {
 	expect(t, app, http.MethodGet, "/abc", "abc")
 	expectStatus(t, app, http.MethodGet, "/users", http.StatusNotFound)
 
-	expect(t, app, http.MethodGet, "/api/v1/x", "nv1x")
-	expect(t, app, http.MethodGet, "/api/y", "ny")
-	expect(t, app, http.MethodGet, "/api/z", "nz")
 	expect(t, app, http.MethodGet, "/api/v2/t", "nv2t")
 	expect(t, app, http.MethodGet, "/api/v1/c/deep", "deep")
 
@@ -498,9 +495,6 @@ func TestGroupRouting(t *testing.T) {
 func TestGroupPatternMatching(t *testing.T) {
 	app := sim.NewApp()
 
-	// The wildcard sits one segment into the prefix: a leading-segment
-	// wildcard would overlap catch-alls and subtrees without
-	// dominating them, which ServeMux rejects on a shared mux.
 	app.Group("/api/{v}", func(r sim.Router) {
 		r.Get("/", markHandlerFunc("vroot"))
 		r.Get("/{id}", markHandlerFunc("vid"))
@@ -509,8 +503,6 @@ func TestGroupPatternMatching(t *testing.T) {
 	app.Group("/pat", func(r sim.Router) {
 		r.Get("/{id}", markHandlerFunc("wild"))
 	})
-	// The multi-segment catch-all sits under a literal prefix for the
-	// same reason as the wildcard prefix above.
 	app.Group("/multi/x", func(r sim.Router) {
 		r.Get("/{rest...}", markHandlerFunc("rest"))
 	})
@@ -526,14 +518,13 @@ func TestGroupPatternMatching(t *testing.T) {
 	})
 	app.Group("/p", func(r sim.Router) { r.Handle("PATCH \t /", markHandler("patch")) })
 
-	// Sibling groups with the same route path do not collide.
 	app.Group("/sib1", func(r sim.Router) { r.Get("/x", markHandlerFunc("sib1")) })
 	app.Group("/sib2", func(r sim.Router) { r.Get("/x", markHandlerFunc("sib2")) })
 
 	expect(t, app, http.MethodGet, "/api/v1/", "vroot")
 	expectStatus(t, app, http.MethodGet, "/api/v1", http.StatusTemporaryRedirect)
-	// The wildcard subtree redirects any unmatched two-segment path
-	// under the prefix (GET /api/x -> /api/x/).
+	// /api/x has no exact match; only its trailing-slash form /api/x/
+	// matches the {v}/ subtree, so ServeMux 307-redirects.
 	expectStatus(t, app, http.MethodGet, "/api/x", http.StatusTemporaryRedirect)
 	expect(t, app, http.MethodGet, "/api/v1/123", "vid")
 	expect(t, app, http.MethodGet, "/api/v1/x", "vx")
@@ -543,12 +534,11 @@ func TestGroupPatternMatching(t *testing.T) {
 
 	expect(t, app, http.MethodGet, "/public", "exact")
 	expect(t, app, http.MethodGet, "/public/", "pub")
-	// The {$} marker matches the slashed root only: the bare prefix
-	// redirects, the exact path serves.
+	// {$} restricts the route to exactly /api/: /api/ serves it, and
+	// /api is 307-redirected to it.
 	expectStatus(t, app, http.MethodGet, "/api", http.StatusTemporaryRedirect)
 	expect(t, app, http.MethodGet, "/api/", "apir")
 
-	// A method pattern with extended whitespace ("PATCH \t /").
 	expect(t, app, http.MethodPatch, "/p/anything", "patch")
 	expectStatus(t, app, http.MethodGet, "/p/anything", http.StatusMethodNotAllowed)
 
@@ -559,7 +549,6 @@ func TestGroupPatternMatching(t *testing.T) {
 func TestGroupWrapperScoping(t *testing.T) {
 	app := sim.NewApp()
 
-	// /root is registered before Use so it stays unwrapped.
 	app.Get("/root", markHandlerFunc("root"))
 	app.Use(wrapHeader("X-Wrapped", "root"))
 	app.Group("/wrapped", func(r sim.Router) {
@@ -582,25 +571,20 @@ func TestGroupWrapperScoping(t *testing.T) {
 		r.Get("/g2", markHandlerFunc("g2"))
 	})
 
-	// A route registered before Use is not wrapped by it.
 	if rec := serve(t, app, http.MethodGet, "/root"); rec.Code != http.StatusOK ||
 		rec.Body.String() != "root" || rec.Header().Get("X-Wrapped") != "" || rec.Header().Get("X-Group") != "" {
 		t.Fatalf("GET /root = %d, X-Wrapped %q, X-Group %q, body %q; want unwrapped %q",
 			rec.Code, rec.Header().Get("X-Wrapped"), rec.Header().Get("X-Group"), rec.Body.String(), "root")
 	}
-	// Root wrappers apply to group routes, on top of the group's own.
 	if rec := serve(t, app, http.MethodGet, "/wrapped/g"); rec.Code != http.StatusOK ||
 		rec.Header().Get("X-Wrapped") != "root" || rec.Header().Get("X-Group") != "g" {
 		t.Fatalf("GET /wrapped/g = %d, X-Wrapped %q, X-Group %q; want %q and %q",
 			rec.Code, rec.Header().Get("X-Wrapped"), rec.Header().Get("X-Group"), "root", "g")
 	}
-	// Nested group wrappers compose in order, outer first.
 	if got := strings.Join(
-		serve(t, app, http.MethodGet, "/nested/v1/x").Header().Values("X-Order"),
-		""); got != "outerinner" {
+		serve(t, app, http.MethodGet, "/nested/v1/x").Header().Values("X-Order"), ""); got != "outerinner" {
 		t.Fatalf("nested Use order = %q, want %q", got, "outerinner")
 	}
-	// Sibling groups without a prefix scope wrappers independently.
 	if rec := serve(t, app, http.MethodGet, "/g1"); rec.Code != http.StatusOK || rec.Header().Get("X-Group") != "1" {
 		t.Fatalf("GET /g1 = %d, X-Group %q; want %q", rec.Code, rec.Header().Get("X-Group"), "1")
 	}

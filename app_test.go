@@ -32,7 +32,7 @@ func markHandlerFunc(mark string) http.HandlerFunc {
 }
 
 // wrapHeader returns a wrapper that adds key: value to the response
-// header before delegating to the inner handler, like real middlewares
+// header before delegating to the inner handler, like real wrappers
 // that mark their work on the response.
 func wrapHeader(key, value string) func(http.Handler) http.Handler {
 	return func(h http.Handler) http.Handler {
@@ -247,6 +247,30 @@ func TestConflictingPatternPanics(t *testing.T) {
 	app.Handle("/a/b", markHandler("second"))
 }
 
+func TestGroupDuplicateRegistrationPanics(t *testing.T) {
+	app := sim.NewApp()
+	defer func() {
+		if recover() == nil {
+			t.Error("duplicate route in a group did not panic")
+		}
+	}()
+	app.Group("/api", func(r sim.Router) {
+		r.Get("/x", markHandlerFunc("first"))
+		r.Get("/x", markHandlerFunc("second"))
+	})
+}
+
+func TestGroupConflictingRoutesAcrossGroups(t *testing.T) {
+	app := sim.NewApp()
+	app.Group("/a", func(r sim.Router) { r.Get("/x", markHandlerFunc("first")) })
+	defer func() {
+		if recover() == nil {
+			t.Error("conflicting routes across groups did not panic")
+		}
+	}()
+	app.Group("/a", func(r sim.Router) { r.Get("/x", markHandlerFunc("second")) })
+}
+
 func TestUseAppliesToSubsequentHandlers(t *testing.T) {
 	app := sim.NewApp()
 	var r sim.Router = app
@@ -382,5 +406,211 @@ func TestRunInvalidAddr(t *testing.T) {
 	app := sim.NewApp()
 	if err := app.Run(t.Context(), "localhost:99999"); err == nil {
 		t.Error("Run with an invalid port returned nil error")
+	}
+}
+
+func TestHandleHostPatterns(t *testing.T) {
+	app := sim.NewApp()
+	app.Handle("api.example.com/", markHandler("host"))
+	app.Handle("GET api.example.com/x", markHandler("mhost"))
+
+	expect(t, app, http.MethodGet, "http://api.example.com/x", "mhost")
+	expect(t, app, http.MethodPost, "http://api.example.com/x", "host")
+	expectStatus(t, app, http.MethodGet, "http://other.com/x", http.StatusNotFound)
+}
+
+func TestGroupRouting(t *testing.T) {
+	app := sim.NewApp()
+	app.Group("/api", func(r sim.Router) {
+		r.Get("/users", markHandlerFunc("users"))
+		r.HandleFunc("/func", markHandlerFunc("func"))
+		r.Handle("GET /handle", markHandler("handle"))
+
+		r.Group("/v1", func(r sim.Router) {
+			r.Get("/x", markHandlerFunc("nv1x"))
+			r.Group("/c", func(r sim.Router) { r.Get("/deep", markHandlerFunc("deep")) })
+		})
+		r.Group("", func(r sim.Router) {
+			r.Get("/y", markHandlerFunc("ny"))
+		})
+		r.Group("/", func(r sim.Router) {
+			r.Get("/z", markHandlerFunc("nz"))
+		})
+		r.Group("", func(r sim.Router) {
+			r.Group("/v2", func(r sim.Router) {
+				r.Get("/t", markHandlerFunc("nv2t"))
+			})
+		})
+	})
+
+	app.Group("api", func(r sim.Router) {
+		r.Get("/items", markHandlerFunc("items"))
+	})
+
+	app.Group("/api/", func(r sim.Router) {
+		r.Get("/orders", markHandlerFunc("orders"))
+	})
+	app.Group("", func(r sim.Router) {
+		r.Get("/ABC", markHandlerFunc("ABC"))
+	})
+	app.Group("/", func(r sim.Router) {
+		r.Get("/DEF", markHandlerFunc("def"))
+		r.Group("/", func(r sim.Router) {
+			r.Get("/abc", markHandlerFunc("abc"))
+		})
+	})
+
+	expect(t, app, http.MethodGet, "/api/users", "users")
+	expect(t, app, http.MethodGet, "/api/items", "items")
+	expect(t, app, http.MethodGet, "/api/orders", "orders")
+	expect(t, app, http.MethodGet, "/ABC", "ABC")
+	expect(t, app, http.MethodGet, "/DEF", "def")
+	expect(t, app, http.MethodGet, "/abc", "abc")
+	expectStatus(t, app, http.MethodGet, "/users", http.StatusNotFound)
+
+	expect(t, app, http.MethodGet, "/api/v1/x", "nv1x")
+	expect(t, app, http.MethodGet, "/api/y", "ny")
+	expect(t, app, http.MethodGet, "/api/z", "nz")
+	expect(t, app, http.MethodGet, "/api/v2/t", "nv2t")
+	expect(t, app, http.MethodGet, "/api/v1/c/deep", "deep")
+
+	expect(t, app, http.MethodGet, "/api/func", "func")
+	expect(t, app, http.MethodPost, "/api/func", "func")
+	expect(t, app, http.MethodGet, "/api/handle", "handle")
+	expectStatus(t, app, http.MethodPost, "/api/handle", http.StatusMethodNotAllowed)
+}
+
+func TestGroupPatternMatching(t *testing.T) {
+	app := sim.NewApp()
+
+	// A wildcard in the group prefix, like chi's Route("/{hash}/share")
+	// (one segment deeper: a leading-segment wildcard overlaps
+	// catch-alls and subtrees without dominating them, so ServeMux
+	// rejects it on a shared mux). The group also holds a route at the
+	// group root and a nested wildcard route.
+	app.Group("/api/{v}", func(r sim.Router) {
+		r.Get("/", markHandlerFunc("vroot"))
+		r.Get("/{id}", markHandlerFunc("vid"))
+		r.Get("/x", markHandlerFunc("vx"))
+	})
+	app.Group("/pat", func(r sim.Router) {
+		r.Get("/{id}", markHandlerFunc("wild"))
+	})
+	// The multi-segment catch-all sits under a literal prefix for the
+	// same reason as the wildcard prefix above.
+	app.Group("/multi/x", func(r sim.Router) {
+		r.Get("/{rest...}", markHandlerFunc("rest"))
+	})
+	app.Group("/stat", func(r sim.Router) {
+		r.HandleFunc("/files/", markHandlerFunc("static"))
+	})
+	app.Group("/api", func(r sim.Router) {
+		r.Get("/{$}", markHandlerFunc("apir"))
+	})
+	app.Group("/public", func(r sim.Router) {
+		r.Get("/", markHandlerFunc("pub"))
+		r.Get("", markHandlerFunc("exact"))
+	})
+	app.Group("/p", func(r sim.Router) { r.Handle("PATCH \t /", markHandler("patch")) })
+
+	// Sibling groups with the same route path do not collide.
+	app.Group("/sib1", func(r sim.Router) { r.Get("/x", markHandlerFunc("sib1")) })
+	app.Group("/sib2", func(r sim.Router) { r.Get("/x", markHandlerFunc("sib2")) })
+
+	// Wildcards, catch-alls, and subtrees.
+	expect(t, app, http.MethodGet, "/api/v1/", "vroot")
+	expectStatus(t, app, http.MethodGet, "/api/v1", http.StatusTemporaryRedirect)
+	// The wildcard subtree redirects any unmatched two-segment path
+	// under the prefix (GET /api/x -> /api/x/).
+	expectStatus(t, app, http.MethodGet, "/api/x", http.StatusTemporaryRedirect)
+	expect(t, app, http.MethodGet, "/api/v1/123", "vid")
+	expect(t, app, http.MethodGet, "/api/v1/x", "vx")
+	expect(t, app, http.MethodGet, "/pat/123", "wild")
+	expect(t, app, http.MethodGet, "/multi/x/a/b/c", "rest")
+	expect(t, app, http.MethodGet, "/stat/files/x", "static")
+
+	// Routes at the group root: the exact root and the subtree root
+	// coexist.
+	expect(t, app, http.MethodGet, "/public", "exact")
+	expect(t, app, http.MethodGet, "/public/", "pub")
+	// The {$} marker matches the slashed root only: the bare prefix
+	// redirects, the exact path serves.
+	expectStatus(t, app, http.MethodGet, "/api", http.StatusTemporaryRedirect)
+	expect(t, app, http.MethodGet, "/api/", "apir")
+
+	// A method pattern with extended whitespace ("PATCH \t /").
+	expect(t, app, http.MethodPatch, "/p/anything", "patch")
+	expectStatus(t, app, http.MethodGet, "/p/anything", http.StatusMethodNotAllowed)
+
+	// Isolation.
+	expect(t, app, http.MethodGet, "/sib1/x", "sib1")
+	expect(t, app, http.MethodGet, "/sib2/x", "sib2")
+}
+
+func TestGroupWrapperScoping(t *testing.T) {
+	app := sim.NewApp()
+
+	// /root is registered before Use so it stays unwrapped.
+	app.Get("/root", markHandlerFunc("root"))
+	app.Use(wrapHeader("X-Wrapped", "root"))
+	app.Group("/wrapped", func(r sim.Router) {
+		r.Use(wrapHeader("X-Group", "g"))
+		r.Get("/g", markHandlerFunc("g"))
+	})
+	app.Group("/nested", func(r sim.Router) {
+		r.Use(wrapHeader("X-Order", "outer"))
+		r.Group("/v1", func(r sim.Router) {
+			r.Use(wrapHeader("X-Order", "inner"))
+			r.Get("/x", markHandlerFunc("x"))
+		})
+	})
+	app.Group("", func(r sim.Router) {
+		r.Use(wrapHeader("X-Group", "1"))
+		r.Get("/g1", markHandlerFunc("g1"))
+	})
+	app.Group("", func(r sim.Router) {
+		r.Use(wrapHeader("X-Group", "2"))
+		r.Get("/g2", markHandlerFunc("g2"))
+	})
+
+	// A route registered before Use is not wrapped by it.
+	if rec := serve(t, app, http.MethodGet, "/root"); rec.Code != http.StatusOK ||
+		rec.Body.String() != "root" || rec.Header().Get("X-Wrapped") != "" || rec.Header().Get("X-Group") != "" {
+		t.Fatalf("GET /root = %d, X-Wrapped %q, X-Group %q, body %q; want unwrapped %q",
+			rec.Code, rec.Header().Get("X-Wrapped"), rec.Header().Get("X-Group"), rec.Body.String(), "root")
+	}
+	// Root wrappers apply to group routes, on top of the group's own.
+	if rec := serve(t, app, http.MethodGet, "/wrapped/g"); rec.Code != http.StatusOK ||
+		rec.Header().Get("X-Wrapped") != "root" || rec.Header().Get("X-Group") != "g" {
+		t.Fatalf("GET /wrapped/g = %d, X-Wrapped %q, X-Group %q; want %q and %q",
+			rec.Code, rec.Header().Get("X-Wrapped"), rec.Header().Get("X-Group"), "root", "g")
+	}
+	// Nested group wrappers compose in order, outer first.
+	if got := strings.Join(
+		serve(t, app, http.MethodGet, "/nested/v1/x").Header().Values("X-Order"),
+		""); got != "outerinner" {
+		t.Fatalf("nested Use order = %q, want %q", got, "outerinner")
+	}
+	// Sibling groups without a prefix scope wrappers independently.
+	if rec := serve(t, app, http.MethodGet, "/g1"); rec.Code != http.StatusOK || rec.Header().Get("X-Group") != "1" {
+		t.Fatalf("GET /g1 = %d, X-Group %q; want %q", rec.Code, rec.Header().Get("X-Group"), "1")
+	}
+	if rec := serve(t, app, http.MethodGet, "/g2"); rec.Code != http.StatusOK || rec.Header().Get("X-Group") != "2" {
+		t.Fatalf("GET /g2 = %d, X-Group %q; want %q", rec.Code, rec.Header().Get("X-Group"), "2")
+	}
+}
+
+func expect(t *testing.T, app *sim.App, method, target, body string) {
+	t.Helper()
+	rec := serve(t, app, method, target)
+	if rec.Code != http.StatusOK || rec.Body.String() != body {
+		t.Fatalf("%s %s = %d %q, want 200 %q", method, target, rec.Code, rec.Body.String(), body)
+	}
+}
+
+func expectStatus(t *testing.T, app *sim.App, method, target string, code int) {
+	t.Helper()
+	if rec := serve(t, app, method, target); rec.Code != code {
+		t.Fatalf("%s %s = %d, want %d", method, target, rec.Code, code)
 	}
 }

@@ -43,6 +43,21 @@ func wrapHeader(key, value string) func(http.Handler) http.Handler {
 	}
 }
 
+func expect(t *testing.T, app *sim.App, method, target, body string) {
+	t.Helper()
+	rec := serve(t, app, method, target)
+	if rec.Code != http.StatusOK || rec.Body.String() != body {
+		t.Fatalf("%s %s = %d %q, want 200 %q", method, target, rec.Code, rec.Body.String(), body)
+	}
+}
+
+func expectStatus(t *testing.T, app *sim.App, method, target string, code int) {
+	t.Helper()
+	if rec := serve(t, app, method, target); rec.Code != code {
+		t.Fatalf("%s %s = %d, want %d", method, target, rec.Code, code)
+	}
+}
+
 // serve performs an HTTP request against app and returns the recorder.
 func serve(t *testing.T, h http.Handler, method, target string) *httptest.ResponseRecorder {
 	t.Helper()
@@ -57,6 +72,16 @@ func TestNewApp(t *testing.T) {
 	if app == nil {
 		t.Fatal("NewApp() returned nil")
 	}
+}
+
+func TestHandleHostPatterns(t *testing.T) {
+	app := sim.NewApp()
+	app.Handle("api.example.com/", markHandler("host"))
+	app.Handle("GET api.example.com/x", markHandler("mhost"))
+
+	expect(t, app, http.MethodGet, "http://api.example.com/x", "mhost")
+	expect(t, app, http.MethodPost, "http://api.example.com/x", "host")
+	expectStatus(t, app, http.MethodGet, "http://other.com/x", http.StatusNotFound)
 }
 
 func TestMethodRouting(t *testing.T) {
@@ -409,16 +434,6 @@ func TestRunInvalidAddr(t *testing.T) {
 	}
 }
 
-func TestHandleHostPatterns(t *testing.T) {
-	app := sim.NewApp()
-	app.Handle("api.example.com/", markHandler("host"))
-	app.Handle("GET api.example.com/x", markHandler("mhost"))
-
-	expect(t, app, http.MethodGet, "http://api.example.com/x", "mhost")
-	expect(t, app, http.MethodPost, "http://api.example.com/x", "host")
-	expectStatus(t, app, http.MethodGet, "http://other.com/x", http.StatusNotFound)
-}
-
 func TestGroupRouting(t *testing.T) {
 	app := sim.NewApp()
 	app.Group("/api", func(r sim.Router) {
@@ -483,11 +498,9 @@ func TestGroupRouting(t *testing.T) {
 func TestGroupPatternMatching(t *testing.T) {
 	app := sim.NewApp()
 
-	// A wildcard in the group prefix, like chi's Route("/{hash}/share")
-	// (one segment deeper: a leading-segment wildcard overlaps
-	// catch-alls and subtrees without dominating them, so ServeMux
-	// rejects it on a shared mux). The group also holds a route at the
-	// group root and a nested wildcard route.
+	// The wildcard sits one segment into the prefix: a leading-segment
+	// wildcard would overlap catch-alls and subtrees without
+	// dominating them, which ServeMux rejects on a shared mux.
 	app.Group("/api/{v}", func(r sim.Router) {
 		r.Get("/", markHandlerFunc("vroot"))
 		r.Get("/{id}", markHandlerFunc("vid"))
@@ -517,7 +530,6 @@ func TestGroupPatternMatching(t *testing.T) {
 	app.Group("/sib1", func(r sim.Router) { r.Get("/x", markHandlerFunc("sib1")) })
 	app.Group("/sib2", func(r sim.Router) { r.Get("/x", markHandlerFunc("sib2")) })
 
-	// Wildcards, catch-alls, and subtrees.
 	expect(t, app, http.MethodGet, "/api/v1/", "vroot")
 	expectStatus(t, app, http.MethodGet, "/api/v1", http.StatusTemporaryRedirect)
 	// The wildcard subtree redirects any unmatched two-segment path
@@ -529,8 +541,6 @@ func TestGroupPatternMatching(t *testing.T) {
 	expect(t, app, http.MethodGet, "/multi/x/a/b/c", "rest")
 	expect(t, app, http.MethodGet, "/stat/files/x", "static")
 
-	// Routes at the group root: the exact root and the subtree root
-	// coexist.
 	expect(t, app, http.MethodGet, "/public", "exact")
 	expect(t, app, http.MethodGet, "/public/", "pub")
 	// The {$} marker matches the slashed root only: the bare prefix
@@ -542,7 +552,6 @@ func TestGroupPatternMatching(t *testing.T) {
 	expect(t, app, http.MethodPatch, "/p/anything", "patch")
 	expectStatus(t, app, http.MethodGet, "/p/anything", http.StatusMethodNotAllowed)
 
-	// Isolation.
 	expect(t, app, http.MethodGet, "/sib1/x", "sib1")
 	expect(t, app, http.MethodGet, "/sib2/x", "sib2")
 }
@@ -597,20 +606,5 @@ func TestGroupWrapperScoping(t *testing.T) {
 	}
 	if rec := serve(t, app, http.MethodGet, "/g2"); rec.Code != http.StatusOK || rec.Header().Get("X-Group") != "2" {
 		t.Fatalf("GET /g2 = %d, X-Group %q; want %q", rec.Code, rec.Header().Get("X-Group"), "2")
-	}
-}
-
-func expect(t *testing.T, app *sim.App, method, target, body string) {
-	t.Helper()
-	rec := serve(t, app, method, target)
-	if rec.Code != http.StatusOK || rec.Body.String() != body {
-		t.Fatalf("%s %s = %d %q, want 200 %q", method, target, rec.Code, rec.Body.String(), body)
-	}
-}
-
-func expectStatus(t *testing.T, app *sim.App, method, target string, code int) {
-	t.Helper()
-	if rec := serve(t, app, method, target); rec.Code != code {
-		t.Fatalf("%s %s = %d, want %d", method, target, rec.Code, code)
 	}
 }

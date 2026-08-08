@@ -135,15 +135,8 @@ func (a *App) Group(relativePath string, fn func(r Router)) {
 	if fn == nil {
 		return
 	}
-	prefix := path.Join(cmp.Or(a.basePath, "/"), relativePath)
-	// An empty or "/" relative path yields the "/" prefix, which would
-	// double the slash when joined with a route pattern (e.g. "//abc").
-	// Treat it as no prefix: routes register at the parent's base path.
-	if prefix == "/" {
-		prefix = ""
-	}
 	app := &App{
-		basePath: prefix,
+		basePath: path.Join(cmp.Or(a.basePath, "/"), relativePath),
 		mux:      a.mux,
 		ss:       slices.Clone(a.ss),
 	}
@@ -153,8 +146,14 @@ func (a *App) Group(relativePath string, fn func(r Router)) {
 // handle registers h on the mux for the given method and path,
 // resolving the path against the router's base path. An empty
 // method registers h for all methods (see [http.ServeMux]).
-func (a *App) handle(method, path string, h http.Handler) {
-	pattern := fmt.Sprintf("%s %s", method, a.basePath+path)
+func (a *App) handle(method, rest string, h http.Handler) {
+	pattern := path.Join(a.basePath, rest)
+	if strings.HasSuffix(rest, "/") && pattern != "/" {
+		pattern += "/"
+	}
+	if method != "" {
+		pattern = method + " " + pattern
+	}
 	a.mux.Handle(pattern, Chain(a.ss...)(h))
 	slog.Debug("route registered", "pattern", pattern)
 }

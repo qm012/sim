@@ -15,8 +15,8 @@ import (
 	"github.com/qm012/sim"
 )
 
-// markHandler returns an http.Handler that writes mark to the response body.
-// It is used to verify which registered handler served a request.
+// markHandler returns an http.Handler that writes mark to the body,
+// identifying which handler served a request.
 func markHandler(mark string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = io.WriteString(w, mark)
@@ -32,8 +32,7 @@ func markHandlerFunc(mark string) http.HandlerFunc {
 }
 
 // wrapHeader returns a wrapper that adds key: value to the response
-// header before delegating to the inner handler, like real wrappers
-// that mark their work on the response.
+// header before delegating to the inner handler.
 func wrapHeader(key, value string) func(http.Handler) http.Handler {
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -105,7 +104,6 @@ func TestMethodRouting(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.register(app, "/route", markHandlerFunc(tt.name))
 
-			// The registered method is served by its own handler.
 			rec := serve(t, app, tt.method, "/route")
 			if rec.Code != http.StatusOK {
 				t.Fatalf("%s /route = %d, want %d", tt.method, rec.Code, http.StatusOK)
@@ -132,8 +130,6 @@ func TestGetPatternAlsoMatchesHead(t *testing.T) {
 	}
 }
 
-// TestAllMethodsRegistration verifies that handlers registered via Any,
-// Handle, and HandleFunc are served for every HTTP method.
 func TestAllMethodsRegistration(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -179,8 +175,7 @@ func TestWildcardPathValue(t *testing.T) {
 	if rec.Code != http.StatusOK || rec.Body.String() != "user:42" {
 		t.Errorf("GET /users/42 = %d %q, want 200 %q", rec.Code, rec.Body.String(), "user:42")
 	}
-	// {id} matches a single path segment only.
-	if rec := serve(t, app, http.MethodGet, "/users/42/posts"); rec.Code != http.StatusNotFound {
+	if rec = serve(t, app, http.MethodGet, "/users/42/posts"); rec.Code != http.StatusNotFound {
 		t.Errorf("GET /users/42/posts = %d, want %d", rec.Code, http.StatusNotFound)
 	}
 }
@@ -241,6 +236,7 @@ func TestHandlerReturnsMatch(t *testing.T) {
 	if h == nil {
 		t.Fatal("Handler returned nil handler for an unmatched path")
 	}
+
 	rec = httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	if rec.Code != http.StatusNotFound {
@@ -251,6 +247,7 @@ func TestHandlerReturnsMatch(t *testing.T) {
 func TestMethodNotAllowed(t *testing.T) {
 	app := sim.NewApp()
 	app.Get("/items", markHandlerFunc("items"))
+
 	rec := serve(t, app, http.MethodPost, "/items")
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("POST /items = %d, want %d", rec.Code, http.StatusMethodNotAllowed)
@@ -325,11 +322,10 @@ func TestUseAccumulatesInOrder(t *testing.T) {
 	app := sim.NewApp()
 	app.Use(wrapHeader("X-Order", "a"))
 	app.Use(wrapHeader("X-Order", "b"))
+
 	app.Get("/", markHandlerFunc("h"))
-	// The first Use call is outermost, so it records its name first.
-	if got := strings.Join(
-		serve(t, app, http.MethodGet, "/").Header().Values("X-Order"),
-		""); got != "ab" {
+	rec := serve(t, app, http.MethodGet, "/")
+	if got := strings.Join(rec.Header().Values("X-Order"), ""); got != "ab" || rec.Body.String() != "h" {
 		t.Errorf("wrapper order = %q, want %q", got, "ab")
 	}
 }
@@ -338,9 +334,7 @@ func TestUseEmptyIsNoop(t *testing.T) {
 	app := sim.NewApp()
 	app.Use()
 	app.Get("/", markHandlerFunc("h"))
-	if got := serve(t, app, http.MethodGet, "/").Body.String(); got != "h" {
-		t.Errorf("body = %q, want %q", got, "h")
-	}
+	expect(t, app, http.MethodGet, "/", "h")
 }
 
 func TestUseAppliesToAnyAndHandle(t *testing.T) {
@@ -370,9 +364,7 @@ func TestUseWrapperSeesRequestFirst(t *testing.T) {
 	app.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, r.Header.Get("X-Wrapped"))
 	})
-	if got := serve(t, app, http.MethodGet, "/").Body.String(); got != "yes" {
-		t.Errorf("handler did not see the header set by the wrapper: got %q, want %q", got, "yes")
-	}
+	expect(t, app, http.MethodGet, "/", "yes")
 }
 
 func TestChainWrappedHandlerRegistration(t *testing.T) {
@@ -434,19 +426,21 @@ func TestRunInvalidAddr(t *testing.T) {
 	}
 }
 
+//nolint:funlen // registers a route tree then asserts every branch
 func TestGroupRouting(t *testing.T) {
 	app := sim.NewApp()
 	app.Group("/api", func(r sim.Router) {
 		r.Get("/users", markHandlerFunc("users"))
 		r.HandleFunc("/func", markHandlerFunc("func"))
 		r.Handle("GET /handle", markHandler("handle"))
-
 		r.Group("/v1", func(r sim.Router) {
 			r.Get("/x", markHandlerFunc("nv1x"))
 			r.Group("/c", func(r sim.Router) { r.Get("/deep", markHandlerFunc("deep")) })
 		})
 		r.Group("", func(r sim.Router) {
 			r.Get("/y", markHandlerFunc("ny"))
+			r.Get("xbb", markHandlerFunc("xbb"))
+			r.Get("xcc//", markHandlerFunc("xcc"))
 		})
 		r.Group("/", func(r sim.Router) {
 			r.Get("/z", markHandlerFunc("nz"))
@@ -457,44 +451,60 @@ func TestGroupRouting(t *testing.T) {
 			})
 		})
 	})
-
 	app.Group("api", func(r sim.Router) {
 		r.Get("/items", markHandlerFunc("items"))
+		r.Get("ubc", markHandlerFunc("ubc"))
 	})
-
 	app.Group("/api/", func(r sim.Router) {
 		r.Get("/orders", markHandlerFunc("orders"))
+		r.Get("xorders", markHandlerFunc("xorders"))
+		r.Get("//morders", markHandlerFunc("morders"))
+		r.Get("//mdorders///", markHandlerFunc("mdorders"))
+		r.Get("///d//mdorders//b//cc/", markHandlerFunc("mutilmdorders"))
 	})
 	app.Group("", func(r sim.Router) {
 		r.Get("/ABC", markHandlerFunc("ABC"))
+		r.Get("ccc", markHandlerFunc("ccc"))
 	})
 	app.Group("/", func(r sim.Router) {
 		r.Get("/DEF", markHandlerFunc("def"))
+		r.Get("abd", markHandlerFunc("abd"))
 		r.Group("/", func(r sim.Router) {
 			r.Get("/abc", markHandlerFunc("abc"))
 		})
 	})
+	app.Group("/nil", nil)
 
 	expect(t, app, http.MethodGet, "/api/users", "users")
 	expect(t, app, http.MethodGet, "/api/items", "items")
+	expect(t, app, http.MethodGet, "/api/ubc", "ubc")
 	expect(t, app, http.MethodGet, "/api/orders", "orders")
+	expect(t, app, http.MethodGet, "/api/xorders", "xorders")
+	expect(t, app, http.MethodGet, "/api/morders", "morders")
+	expect(t, app, http.MethodGet, "/api/mdorders/", "mdorders")
+	expect(t, app, http.MethodGet, "/api/d/mdorders/b/cc/", "mutilmdorders")
 	expect(t, app, http.MethodGet, "/ABC", "ABC")
+	expect(t, app, http.MethodGet, "/ccc", "ccc")
 	expect(t, app, http.MethodGet, "/DEF", "def")
+	expect(t, app, http.MethodGet, "/abd", "abd")
 	expect(t, app, http.MethodGet, "/abc", "abc")
 	expectStatus(t, app, http.MethodGet, "/users", http.StatusNotFound)
-
-	expect(t, app, http.MethodGet, "/api/v2/t", "nv2t")
-	expect(t, app, http.MethodGet, "/api/v1/c/deep", "deep")
-
 	expect(t, app, http.MethodGet, "/api/func", "func")
 	expect(t, app, http.MethodPost, "/api/func", "func")
 	expect(t, app, http.MethodGet, "/api/handle", "handle")
 	expectStatus(t, app, http.MethodPost, "/api/handle", http.StatusMethodNotAllowed)
+	expect(t, app, http.MethodGet, "/api/v1/x", "nv1x")
+	expect(t, app, http.MethodGet, "/api/v1/c/deep", "deep")
+	expect(t, app, http.MethodGet, "/api/y", "ny")
+	expect(t, app, http.MethodGet, "/api/xbb", "xbb")
+	expect(t, app, http.MethodGet, "/api/xcc/", "xcc")
+	expect(t, app, http.MethodGet, "/api/z", "nz")
+	expect(t, app, http.MethodGet, "/api/v2/t", "nv2t")
+	expectStatus(t, app, http.MethodPost, "/nil", http.StatusNotFound)
 }
 
 func TestGroupPatternMatching(t *testing.T) {
 	app := sim.NewApp()
-
 	app.Group("/api/{v}", func(r sim.Router) {
 		r.Get("/", markHandlerFunc("vroot"))
 		r.Get("/{id}", markHandlerFunc("vid"))

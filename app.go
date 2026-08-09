@@ -1,4 +1,4 @@
-// Copyright (c) 2026 qm012<1007661792@qq.com>. All rights reserved.
+// Copyright (c) 2026 The Sim Authors
 // Use of this source code is governed by a MIT license
 // that can be found in the LICENSE file.
 

@@ -73,11 +73,14 @@ linters:
     depguard:
       rules:
         main:
+          allow:
+            - "$gostd"
+            - "github.com/qm012/sim"
           deny:
-            - pkg: "!$gostd"
-              desc: "third-party packages are not allowed in this repository"
             - pkg: "io/ioutil"
               desc: "io/ioutil is deprecated; use the corresponding 'os' or 'io' functions instead"
+            - pkg: "math/rand$"
+              desc: "use math/rand/v2"
     errcheck:
       check-type-assertions: true
     forbidigo:

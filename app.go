@@ -27,8 +27,8 @@ type App struct {
 	// registered on this router.
 	basePath string
 
-	// mux routes requests to registered handlers. Pattern matching
-	// and precedence follow [http.ServeMux].
+	// mux routes requests; pattern matching and precedence follow
+	// [http.ServeMux].
 	mux *http.ServeMux
 
 	// ss holds the wrappers applied to every registered handler.
@@ -143,9 +143,9 @@ func (a *App) Group(relativePath string, fn func(r Router)) {
 	fn(app)
 }
 
-// handle registers h on the mux for the given method and path,
-// resolving the path against the router's base path. An empty
-// method registers h for all methods (see [http.ServeMux]).
+// handle registers h on the mux, resolving the path against the
+// router's base path. An empty method registers h for all
+// methods (see [http.ServeMux]).
 func (a *App) handle(method, rest string, h http.Handler) {
 	pattern := path.Join(a.basePath, rest)
 	if strings.HasSuffix(rest, "/") && pattern != "/" {

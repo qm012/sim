@@ -155,9 +155,8 @@ merge. Aim to wrap the description at 72 characters.
 
 ```
 ChainFunc composes the same wrappers as Chain for func-typed
-registration methods such as App.Get and App.Put, so middleware
-written for Chain works unchanged with the verb helpers. Keep both
-in chain.go so the composition helpers live next to each other.
+registration methods such as App.Get and App.Put, so wrappers
+written for Chain work unchanged with the verb helpers.
 
 Signed-off-by: FirstName LastName <email@example.com>
 ```

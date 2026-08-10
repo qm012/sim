@@ -5,11 +5,15 @@
 package sim
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
+	"path"
+	"slices"
+	"strings"
 	"time"
 )
 
@@ -19,6 +23,10 @@ import (
 // using the same syntax and precedence rules as [http.ServeMux].
 // App implements [http.Handler]; create one with [NewApp].
 type App struct {
+	// basePath is the path prefix prepended to every pattern
+	// registered on this router.
+	basePath string
+
 	// mux routes requests to registered handlers. Pattern matching
 	// and precedence follow [http.ServeMux].
 	mux *http.ServeMux
@@ -51,65 +59,67 @@ func (a *App) Use(ss ...func(http.Handler) http.Handler) {
 // Handle registers the handler for the given pattern, with the same
 // behavior as [http.ServeMux.Handle] and [http.Handle].
 func (a *App) Handle(pattern string, handler http.Handler) {
-	a.handle(pattern, handler)
+	method, rest := parsePattern(pattern)
+	a.handle(method, rest, handler)
 }
 
 // HandleFunc registers the handler function for the given pattern,
 // with the same behavior as [http.ServeMux.HandleFunc] and [http.HandleFunc].
 func (a *App) HandleFunc(pattern string, handlerFunc http.HandlerFunc) {
-	a.handle(pattern, handlerFunc)
+	method, rest := parsePattern(pattern)
+	a.handle(method, rest, handlerFunc)
 }
 
 // Any registers handlerFunc for the given path, matching all HTTP methods.
 func (a *App) Any(path string, handlerFunc http.HandlerFunc) {
 	for _, method := range allMethods {
-		a.handle(method+" "+path, handlerFunc)
+		a.handle(method, path, handlerFunc)
 	}
 }
 
 // Get registers handlerFunc for GET requests to the given path.
 func (a *App) Get(path string, handlerFunc http.HandlerFunc) {
-	a.handle(http.MethodGet+" "+path, handlerFunc)
+	a.handle(http.MethodGet, path, handlerFunc)
 }
 
 // Post registers handlerFunc for POST requests to the given path.
 func (a *App) Post(path string, handlerFunc http.HandlerFunc) {
-	a.handle(http.MethodPost+" "+path, handlerFunc)
+	a.handle(http.MethodPost, path, handlerFunc)
 }
 
 // Delete registers handlerFunc for DELETE requests to the given path.
 func (a *App) Delete(path string, handlerFunc http.HandlerFunc) {
-	a.handle(http.MethodDelete+" "+path, handlerFunc)
+	a.handle(http.MethodDelete, path, handlerFunc)
 }
 
 // Patch registers handlerFunc for PATCH requests to the given path.
 func (a *App) Patch(path string, handlerFunc http.HandlerFunc) {
-	a.handle(http.MethodPatch+" "+path, handlerFunc)
+	a.handle(http.MethodPatch, path, handlerFunc)
 }
 
 // Put registers handlerFunc for PUT requests to the given path.
 func (a *App) Put(path string, handlerFunc http.HandlerFunc) {
-	a.handle(http.MethodPut+" "+path, handlerFunc)
+	a.handle(http.MethodPut, path, handlerFunc)
 }
 
 // Options registers handlerFunc for OPTIONS requests to the given path.
 func (a *App) Options(path string, handlerFunc http.HandlerFunc) {
-	a.handle(http.MethodOptions+" "+path, handlerFunc)
+	a.handle(http.MethodOptions, path, handlerFunc)
 }
 
 // Head registers handlerFunc for HEAD requests to the given path.
 func (a *App) Head(path string, handlerFunc http.HandlerFunc) {
-	a.handle(http.MethodHead+" "+path, handlerFunc)
+	a.handle(http.MethodHead, path, handlerFunc)
 }
 
 // Connect registers handlerFunc for CONNECT requests to the given path.
 func (a *App) Connect(path string, handlerFunc http.HandlerFunc) {
-	a.handle(http.MethodConnect+" "+path, handlerFunc)
+	a.handle(http.MethodConnect, path, handlerFunc)
 }
 
 // Trace registers handlerFunc for TRACE requests to the given path.
 func (a *App) Trace(path string, handlerFunc http.HandlerFunc) {
-	a.handle(http.MethodTrace+" "+path, handlerFunc)
+	a.handle(http.MethodTrace, path, handlerFunc)
 }
 
 // Handler returns the handler and the matching pattern for the given request.
@@ -117,15 +127,54 @@ func (a *App) Handler(r *http.Request) (http.Handler, string) {
 	return a.mux.Handler(r)
 }
 
-// handle registers h on the mux for the given pattern.
-// The pattern may include a method prefix, e.g. "GET /path" (see
-// [http.ServeMux]); without one, h is registered for all methods.
-func (a *App) handle(pattern string, h http.Handler) {
+// Group creates a new router group with the given relative path
+// and invokes fn with it. Routes registered by fn are resolved
+// relative to the group's path (see [Router.Group]).
+// If fn is nil, Group does nothing.
+func (a *App) Group(relativePath string, fn func(r Router)) {
+	if fn == nil {
+		return
+	}
+	app := &App{
+		basePath: path.Join(cmp.Or(a.basePath, "/"), relativePath),
+		mux:      a.mux,
+		ss:       slices.Clone(a.ss),
+	}
+	fn(app)
+}
+
+// handle registers h on the mux for the given method and path,
+// resolving the path against the router's base path. An empty
+// method registers h for all methods (see [http.ServeMux]).
+func (a *App) handle(method, rest string, h http.Handler) {
+	pattern := path.Join(a.basePath, rest)
+	if strings.HasSuffix(rest, "/") && pattern != "/" {
+		pattern += "/"
+	}
+	if method != "" {
+		pattern = method + " " + pattern
+	}
 	a.mux.Handle(pattern, Chain(a.ss...)(h))
 	slog.Debug("route registered", "pattern", pattern)
 }
 
-// ServeHTTP implements the http.Handler interface.
+// parsePattern splits s into an optional HTTP method and the path
+// pattern, separated by the first space or tab. An empty method
+// matches any method. Unlike http's parsePattern, it does not
+// validate the pattern.
+// See https://github.com/golang/go/blob/master/src/net/http/pattern.go.
+func parsePattern(s string) (string, string) {
+	method, rest, found := s, "", false
+	if i := strings.IndexAny(s, " \t"); i >= 0 {
+		method, rest, found = s[:i], strings.TrimLeft(s[i+1:], " \t"), true
+	}
+	if !found {
+		rest = method
+		method = ""
+	}
+	return method, rest
+}
+
 func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	a.mux.ServeHTTP(w, r)
 }

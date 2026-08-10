@@ -53,4 +53,11 @@ type Router interface {
 	Head(path string, handlerFunc http.HandlerFunc)
 	Connect(path string, handlerFunc http.HandlerFunc)
 	Trace(path string, handlerFunc http.HandlerFunc)
+
+	// Group creates a new router group with the given relative path.
+	// The fn function registers routes within the group, each of which
+	// is resolved relative to the group's path.
+	// For example, a group registered at "/api" with a route registered
+	// at "/users" handles requests for "/api/users".
+	Group(relativePath string, fn func(r Router))
 }

@@ -32,8 +32,8 @@ func Chain(ss ...func(http.Handler) http.Handler) func(http.Handler) http.Handle
 // single wrapper over http.HandlerFunc handlers, the counterpart of Chain
 // for func-typed registration methods such as [App.Get] and [App.Put].
 //
-// The wrappers are the same func(http.Handler) http.Handler middleware
-// as Chain's, so middleware written for Chain works unchanged.
+// The wrappers are the same func(http.Handler) http.Handler type
+// as Chain's, so wrappers written for Chain work unchanged.
 //
 // With no wrappers, ChainFunc returns a function that leaves its argument
 // unchanged.

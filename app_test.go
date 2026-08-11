@@ -57,7 +57,6 @@ func expectStatus(t *testing.T, app *sim.App, method, target string, code int) {
 	}
 }
 
-// serve performs an HTTP request against app and returns the recorder.
 func serve(t *testing.T, h http.Handler, method, target string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequestWithContext(t.Context(), method, target, nil)

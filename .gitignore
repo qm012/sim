@@ -34,3 +34,6 @@ profile.cov
 # OS system files
 .DS_Store
 Thumbs.db
+
+# Build output
+dist/

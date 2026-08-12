@@ -4,21 +4,11 @@
 `http.ServeMux`. Module `github.com/qm012/sim`; Go version follows
 `go.mod`.
 
-## 1. Verify Before Finishing
+## 1. Development Practices
 
 * Run `make test` (`go test -v ./...`) and `make lint` before finishing;
   `make lint` checks formatting and the linters in `.golangci.yml`.
 * `go mod tidy` and `go fix` must leave no diff — CI enforces both.
-
-## 2. Keep Dependencies at Zero
-
-* The root module stays stdlib-only: `depguard` in `.golangci.yml`
-  allows only `$gostd` and `github.com/qm012/sim`.
-* Tooling dependencies live in `tools/golangci-lint.mod`, never the
-  root `go.mod`.
-
-## 3. Conventions
-
 * Tests: co-located `*_test.go`, table-driven per existing conventions.
   New files start with the full MIT header:
   ```go
@@ -28,7 +18,14 @@
   ```
 * One logical change per PR, with tests — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## 4. Commands
+## 2. Keep Dependencies at Zero
+
+* The root module stays stdlib-only: `depguard` in `.golangci.yml`
+  allows only `$gostd` and `github.com/qm012/sim`.
+* Tooling dependencies live in `tools/golangci-lint.mod`, never the
+  root `go.mod`.
+
+## 3. Commands
 
 | Command       | Purpose                                          |
 |---------------|--------------------------------------------------|

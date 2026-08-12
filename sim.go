@@ -2,8 +2,75 @@
 // Use of this source code is governed by a MIT license
 // that can be found in the LICENSE file.
 
-// Package sim provides an HTTP router built on [net/http.ServeMux],
-// extending it with method-based routing helpers.
+// Package sim provides a small, idiomatic HTTP router built on top of
+// [net/http.ServeMux], extending it with method-based routing helpers
+// such as [App.Get], [App.Post], and [App.Any].
+//
+// Example:
+//
+//	package main
+//
+//	import (
+//		"context"
+//		"log/slog"
+//		"net/http"
+//
+//		"github.com/qm012/sim"
+//	)
+//
+//	func main() {
+//		app := sim.NewApp()
+//
+//		app.Get("/", func(w http.ResponseWriter, _ *http.Request) {
+//			w.Write([]byte("root."))
+//		})
+//		app.Get("/users/{id}", func(w http.ResponseWriter, r *http.Request) {
+//			w.Write([]byte("user " + r.PathValue("id")))
+//		})
+//		app.Group("/api", func(r sim.Router) {
+//			r.Post("/users", func(w http.ResponseWriter, _ *http.Request) {
+//				w.WriteHeader(http.StatusCreated)
+//			})
+//		})
+//
+//		if err := app.Run(context.Background(), ":3333"); err != nil {
+//			slog.Error("server failed", "err", err)
+//		}
+//	}
+//
+// Routes are registered on an [App], which implements [http.Handler]
+// and can be passed directly to [http.ListenAndServe] or served with
+// [App.Run], which shuts the server down gracefully when its context is
+// canceled.
+//
+// # Patterns
+//
+// Pattern matching uses the same syntax and precedence rules as
+// [http.ServeMux] since Go 1.22. A pattern may carry an optional method
+// and host prefix, and a path may contain wildcard segments such as
+// {name} and {name...}. Wildcard values are read from the request with
+// [http.Request.PathValue]. For example:
+//
+//   - "GET /users/{id}" matches only GET requests, capturing the id.
+//   - "/static/" matches every method and any path under "/static/".
+//   - "/files/{path...}" matches the remainder of the URL, including slashes.
+//
+// The method helpers register the same pattern for a single method:
+// [App.Get] registers "GET /path", [App.Post] registers "POST /path",
+// and [App.Any] registers "/path" for every method. The pattern given to
+// a method helper must be a plain path; method prefixes belong to the
+// helper itself.
+//
+// See the [http.ServeMux] documentation for the complete pattern
+// syntax, precedence rules, and trailing-slash redirection behavior.
+//
+// Wrappers registered with [App.Use] are applied to every handler
+// registered after the call, with the first wrapper outermost.
+// [Chain] composes wrappers into one; [ChainFunc] is its counterpart
+// over http.HandlerFunc, the type accepted by the method helpers such
+// as [App.Get].
+//
+// See the documentation of [App] for the full routing API.
 package sim
 
 import (
@@ -24,7 +91,7 @@ var allMethods = []string{
 	http.MethodTrace,
 }
 
-// Router consisting of the core routing methods implemented by App,
+// Router is the set of core routing methods implemented by App,
 // using only the standard net/http.
 type Router interface {
 	// Use registers the given wrappers and applies them to every handler

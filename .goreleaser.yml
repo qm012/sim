@@ -1,0 +1,50 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+version: 2
+
+project_name: sim
+
+builds:
+  - skip: true
+
+source:
+  enabled: true
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  use: github
+  sort: asc
+  # One group per commit type listed under "Common types" in
+  # CONTRIBUTING.md (feat, fix, docs, style, refactor, perf, test,
+  # chore, ci); commits that match no group fall into "Other work".
+  groups:
+    - title: "New Features"
+      regexp: ^\s*feat(\(.+\))?!?:.+$
+      order: 100
+    - title: "Bug fixes"
+      regexp: ^\s*fix(\(.+\))?!?:.+$
+      order: 200
+    - title: "Documentation updates"
+      regexp: ^\s*docs(\(.+\))?!?:.+$
+      order: 400
+    - title: "Code style"
+      regexp: ^\s*style(\(.+\))?!?:.+$
+      order: 500
+    - title: Refactor
+      regexp: ^\s*refactor(\(.+\))?!?:.+$
+      order: 600
+    - title: "Performance improvements"
+      regexp: ^\s*perf(\(.+\))?!?:.+$
+      order: 700
+    - title: Tests
+      regexp: ^\s*test(\(.+\))?!?:.+$
+      order: 800
+    - title: Chores
+      regexp: ^\s*chore(\(.+\))?!?:.+$
+      order: 900
+    - title: CI
+      regexp: ^\s*ci(\(.+\))?!?:.+$
+      order: 1000
+    - title: Other work
+      order: 9999

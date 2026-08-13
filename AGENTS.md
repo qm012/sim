@@ -4,7 +4,14 @@
 `http.ServeMux`. Module `github.com/qm012/sim`; Go version follows
 `go.mod`.
 
-## 1. Development Practices
+## 1. Keep Dependencies at Zero
+
+* The root module stays stdlib-only: `depguard` in `.golangci.yml`
+  allows only `$gostd` and `github.com/qm012/sim`.
+* Tooling dependencies live in `tools/golangci-lint.mod`, never the
+  root `go.mod`.
+
+## 2. Development Practices
 
 * Run `make test` (`go test -v ./...`) and `make lint` before finishing;
   `make lint` checks formatting and the linters in `.golangci.yml`.
@@ -17,13 +24,6 @@
   // that can be found in the LICENSE file.
   ```
 * One logical change per PR, with tests — see [CONTRIBUTING.md](CONTRIBUTING.md).
-
-## 2. Keep Dependencies at Zero
-
-* The root module stays stdlib-only: `depguard` in `.golangci.yml`
-  allows only `$gostd` and `github.com/qm012/sim`.
-* Tooling dependencies live in `tools/golangci-lint.mod`, never the
-  root `go.mod`.
 
 ## 3. Commands
 

@@ -108,6 +108,9 @@ linters:
       - path: _test\.go
         linters:
           - gosec
+      - path: response_writer(_test)?\.go
+        linters:
+          - wrapcheck
 formatters:
   enable:
     - gofmt

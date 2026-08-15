@@ -168,6 +168,37 @@ func TestLoggingExtraAttrs(t *testing.T) {
 	}
 }
 
+func TestHandlerCapturesFieldsAtCallTime(t *testing.T) {
+	rl := sim.NewRequestLogger()
+	rl.LogBytesWritten = true
+	rl.ExtraAttrs = func(_ *http.Request) []slog.Attr {
+		return []slog.Attr{slog.String("user_id", "captured")}
+	}
+	handler := rl.Handler(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
+
+	// Mutate after Handler: the returned handler must keep the captured values.
+	rl.LogBytesWritten = false
+	rl.HideQueryString = true
+	rl.ExtraAttrs = func(_ *http.Request) []slog.Attr {
+		return []slog.Attr{slog.String("user_id", "mutated")}
+	}
+
+	rec := captureLogs(t, func() {
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/search?q=go", nil)
+		handler.ServeHTTP(httptest.NewRecorder(), req)
+	})
+
+	if got := rec["user_id"]; got != "captured" {
+		t.Errorf("user_id = %v, want %q (captured at call time)", got, "captured")
+	}
+	if got := requestGroup(t, rec)["uri"]; got != "/search?q=go" {
+		t.Errorf("uri = %v, want %q (query not hidden)", got, "/search?q=go")
+	}
+	if _, ok := rec["bytes_written"]; !ok {
+		t.Errorf("bytes_written missing: LogBytesWritten captured at call time")
+	}
+}
+
 func TestLoggingPreservesFlusher(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		f, ok := w.(http.Flusher)

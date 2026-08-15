@@ -28,8 +28,15 @@ func NewRequestLogger() *RequestLogger {
 }
 
 // Handler wraps h and logs each request it serves.
-// Do not modify the fields after Handler is called.
+// It captures the current field values at call time;
+// later changes do not affect the returned handler.
 func (rl *RequestLogger) Handler(h http.Handler) http.Handler {
+	// Snapshot the configuration; rl is not referenced after this point.
+	var (
+		logBytesWritten = rl.LogBytesWritten
+		hideQueryString = rl.HideQueryString
+		extraAttrs      = rl.ExtraAttrs
+	)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rw := &responseWriter{w: w}
 		start := time.Now()
@@ -40,7 +47,7 @@ func (rl *RequestLogger) Handler(h http.Handler) http.Handler {
 			statusCode = cmp.Or(rw.statusCode, http.StatusOK)
 			uri        = r.RequestURI
 		)
-		if rl.HideQueryString {
+		if hideQueryString {
 			uri = r.URL.Path
 		}
 		attrs := []slog.Attr{
@@ -51,11 +58,11 @@ func (rl *RequestLogger) Handler(h http.Handler) http.Handler {
 			slog.Int("status_code", statusCode),
 			slog.Duration("cost_duration", time.Since(start)),
 		}
-		if rl.LogBytesWritten {
+		if logBytesWritten {
 			attrs = append(attrs, slog.Int("bytes_written", rw.bytesWritten))
 		}
-		if rl.ExtraAttrs != nil {
-			attrs = append(attrs, rl.ExtraAttrs(r)...)
+		if extraAttrs != nil {
+			attrs = append(attrs, extraAttrs(r)...)
 		}
 
 		slogLevel := slog.LevelDebug

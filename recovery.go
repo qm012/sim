@@ -49,18 +49,25 @@ func (rc *Recovery) Handler(h http.Handler) http.Handler {
 		panicHandler = rc.PanicHandler
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		//nolint:contextcheck // ctx must be read from r at panic time
+		// defer args are evaluated eagerly and would lose downstream context values
 		defer func() {
 			rec := recover()
 			if rec == nil {
 				return
 			}
-			if rec == http.ErrAbortHandler {
-				// Let net/http abort it silently — no stack trace.
+			err, ok := rec.(error)
+			if ok && errors.Is(err, http.ErrAbortHandler) {
+				// Let net/http abort it silently — no stack trace. Re-panic the
+				// sentinel itself so net/http's identity check still matches even
+				// when rec is wrapped (e.g. by singleflight).
 				// See: https://github.com/golang/go/issues/56228
-				panic(rec)
+				// See: https://github.com/golang/go/issues/62510
+				panic(http.ErrAbortHandler)
 			}
-			if err, ok := rec.(error); ok && (errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.EPIPE)) {
-				slog.WarnContext(r.Context(), "[Recovery] client disconnected", "err", err,
+			if ok && (errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.EPIPE)) {
+				slog.WarnContext(r.Context(), "[Recovery] client disconnected",
+					slog.Any("err", err),
 					slog.GroupAttrs("request",
 						slog.String("pattern", r.Pattern),
 						slog.String("method", r.Method),
@@ -70,7 +77,7 @@ func (rc *Recovery) Handler(h http.Handler) http.Handler {
 			}
 			panicError := &PanicError{Panic: rec, Stack: debug.Stack()}
 			slog.ErrorContext(r.Context(), "[Recovery] panic recovered",
-				"err", panicError,
+				slog.Any("err", panicError),
 				slog.GroupAttrs("request",
 					slog.String("pattern", r.Pattern),
 					slog.String("method", r.Method),
@@ -108,8 +115,18 @@ type PanicError struct {
 	Stack []byte
 }
 
+// Error implements the builtin.error interface.
 func (p *PanicError) Error() string {
 	return fmt.Sprintf("panic caught: %v", p.Panic)
+}
+
+// Unwrap returns the panic value if it is an error, enabling
+// errors.Is, errors.As, and errors.AsType to match against it.
+func (p *PanicError) Unwrap() error {
+	if err, ok := p.Panic.(error); ok {
+		return err
+	}
+	return nil
 }
 
 // LogValue implements the slog.LogValuer interface.

@@ -16,18 +16,18 @@ import (
 )
 
 // Recovery wraps an http.Handler to recover from panics, logging them
-// with a stack trace and writing error responses via PanicHandler.
+// with a stack trace and writing error responses via HandlePanic.
 type Recovery struct {
-	// PanicHandler is called after a panic is recovered to handle it,
+	// HandlePanic is called after a panic is recovered to handle it,
 	// typically by writing the HTTP response. For most panics, Recovery
-	// already logs the stack trace; PanicHandler only needs to take care of
-	// the response (and optional side‑effects such as error reporting).
-	// Connection‑related panics are handled internally and never invoke this handler.
+	// already logs the stack trace; HandlePanic only needs to take care of
+	// the response (and optional side-effects such as error reporting).
+	// Connection-related panics are handled internally and never invoke this function.
 	// If the response was already committed prior to the panic, net/http
 	// ignores further WriteHeader calls and appends further writes to the body.
 	// Implementations should be aware of this behavior.
-	// If nil, defaultPanicHandler is used.
-	PanicHandler func(http.ResponseWriter, *http.Request, *PanicError)
+	// If nil, defaultHandlePanic is used.
+	HandlePanic func(http.ResponseWriter, *http.Request, *PanicError)
 }
 
 // NewRecovery returns a new Recovery.
@@ -35,27 +35,30 @@ func NewRecovery() *Recovery {
 	return &Recovery{}
 }
 
-func defaultPanicHandler(w http.ResponseWriter, _ *http.Request, _ *PanicError) {
+func defaultHandlePanic(w http.ResponseWriter, _ *http.Request, _ *PanicError) {
 	http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 }
 
 // Handler returns a handler that recovers from panics raised while
 // invoking h and logs them via slog.
 //
-// If a panic is recovered, the error response is written by the handler
-// set in [Recovery.PanicHandler]. Panics whose value is or wraps
+// If a panic is recovered, the error response is written by
+// [Recovery.HandlePanic] (or defaultHandlePanic if it is nil).
+// Panics whose value is or wraps
 // [http.ErrAbortHandler] are re-panicked so net/http can abort the
 // connection silently, and panics caused by a dead connection (such as
 // a reset or a broken pipe) are logged as warnings without writing a
 // response.
 func (rc *Recovery) Handler(h http.Handler) http.Handler {
-	panicHandler := defaultPanicHandler
-	if rc.PanicHandler != nil {
-		panicHandler = rc.PanicHandler
+	handlePanic := defaultHandlePanic
+	if rc.HandlePanic != nil {
+		handlePanic = rc.HandlePanic
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Use a closure instead of deferred call arguments so that r (its context
+		// values and Pattern) is read at panic time, after downstream handlers
+		// may have amended it.
 		//nolint:contextcheck // ctx must be read from r at panic time
-		// defer args are evaluated eagerly and would lose downstream context values
 		defer func() {
 			value := recover()
 			if value == nil {
@@ -63,7 +66,7 @@ func (rc *Recovery) Handler(h http.Handler) http.Handler {
 			}
 			err, ok := value.(error)
 			if ok && errors.Is(err, http.ErrAbortHandler) {
-				// Let net/http abort it silently — no stack trace. Re-panic the
+				// Let net/http abort it silently - no stack trace. Re-panic the
 				// sentinel itself so net/http's identity check still matches even
 				// when the recovered value is wrapped (e.g. by singleflight).
 				// See: https://github.com/golang/go/issues/56228
@@ -93,7 +96,7 @@ func (rc *Recovery) Handler(h http.Handler) http.Handler {
 					slog.String("path", r.URL.Path),
 					slog.String("dump", redactedRequestDump(r))),
 			)
-			panicHandler(w, r, panicError)
+			handlePanic(w, r, panicError)
 		}()
 		h.ServeHTTP(w, r)
 	})

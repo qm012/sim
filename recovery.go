@@ -70,10 +70,11 @@ func (rc *Recovery) Handler(h http.Handler) http.Handler {
 				// See: https://github.com/golang/go/issues/62510
 				panic(http.ErrAbortHandler)
 			}
+
+			// EPIPE/ECONNRESET are POSIX errnos and never match on Windows.
 			if ok && (errors.Is(err, syscall.ECONNRESET) ||
 				errors.Is(err, syscall.EPIPE) ||
-				errors.Is(err, net.ErrClosed) ||
-				errors.Is(err, syscall.ECONNABORTED)) {
+				errors.Is(err, net.ErrClosed)) {
 				slog.WarnContext(r.Context(), "[Recovery] client disconnected",
 					slog.Any("err", err),
 					slog.GroupAttrs("request",
@@ -98,9 +99,9 @@ func (rc *Recovery) Handler(h http.Handler) http.Handler {
 	})
 }
 
-// redactedRequestDump renders r for logging, masking credential headers
-// (Authorization, Proxy-Authorization). It operates on a clone so the
-// live request's headers are left untouched.
+// redactedRequestDump returns a string representation of r for logging,
+// masking credential headers (Authorization, Proxy-Authorization).
+// It operates on a clone so the original request's headers are left untouched.
 func redactedRequestDump(r *http.Request) string {
 	r2 := r.Clone(r.Context())
 	for _, h := range []string{"Authorization", "Proxy-Authorization"} {

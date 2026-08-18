@@ -11,10 +11,10 @@ import (
 	"time"
 )
 
-// RequestLogger logs each HTTP request via slog.
-type RequestLogger struct {
-	// LogBytesWritten records the response size.
-	LogBytesWritten bool
+// RequestLogging logs each HTTP request via slog.
+type RequestLogging struct {
+	// OmitBytesWritten omits the response body bytes from the logged record.
+	OmitBytesWritten bool
 	// HideQueryString omits the query string from the logged uri,
 	// e.g. for tokens or API keys.
 	HideQueryString bool
@@ -22,20 +22,23 @@ type RequestLogger struct {
 	ExtraAttrs func(*http.Request) []slog.Attr
 }
 
-// NewRequestLogger returns a new RequestLogger.
-func NewRequestLogger() *RequestLogger {
-	return &RequestLogger{}
+// NewRequestLogging returns a new RequestLogging.
+func NewRequestLogging() *RequestLogging {
+	return &RequestLogging{}
 }
 
 // Handler wraps h and logs each request it serves.
 // It captures the current field values at call time;
 // later changes do not affect the returned handler.
-func (rl *RequestLogger) Handler(h http.Handler) http.Handler {
+// If h panics, no record is written for that request; compose this
+// handler outside any panic recovery so recovered panics are recorded
+// as the error responses they become.
+func (rl *RequestLogging) Handler(h http.Handler) http.Handler {
 	// Snapshot the configuration; rl is not referenced after this point.
 	var (
-		logBytesWritten = rl.LogBytesWritten
-		hideQueryString = rl.HideQueryString
-		extraAttrs      = rl.ExtraAttrs
+		omitBytesWritten = rl.OmitBytesWritten
+		hideQueryString  = rl.HideQueryString
+		extraAttrs       = rl.ExtraAttrs
 	)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		rw := &responseWriter{w: w}
@@ -51,21 +54,21 @@ func (rl *RequestLogger) Handler(h http.Handler) http.Handler {
 			uri = r.URL.Path
 		}
 		attrs := []slog.Attr{
-			slog.Group("request",
+			slog.GroupAttrs("request",
 				slog.String("pattern", r.Pattern),
 				slog.String("method", r.Method),
 				slog.String("uri", uri)),
 			slog.Int("status_code", statusCode),
-			slog.Duration("cost_duration", time.Since(start)),
+			slog.Duration("duration", time.Since(start)),
 		}
-		if logBytesWritten {
+		if !omitBytesWritten {
 			attrs = append(attrs, slog.Int("bytes_written", rw.bytesWritten))
 		}
 		if extraAttrs != nil {
 			attrs = append(attrs, extraAttrs(r)...)
 		}
 
-		slogLevel := slog.LevelDebug
+		slogLevel := slog.LevelInfo
 		switch {
 		case statusCode >= http.StatusInternalServerError: // 5xx
 			slogLevel = slog.LevelError

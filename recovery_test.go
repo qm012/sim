@@ -257,16 +257,11 @@ func TestRedactedRequestDump(t *testing.T) {
 	}
 }
 
-// TestRecoveryNilURLRequest guards against a secondary panic inside the
-// recovery path for programmatically built requests without a URL: the log
-// attrs and httputil.DumpRequest dereference r.URL, so such a request must
-// still be handled (500, or swallowed as a client disconnect) instead of
-// letting a nil pointer panic escape Recovery.
 func TestRecoveryNilURLRequest(t *testing.T) {
 	tests := []struct {
 		name  string
 		value any
-		code  int // httptest.ResponseRecorder default; 200 means nothing written
+		code  int
 	}{
 		{"panic", "boom", http.StatusInternalServerError},
 		{"client disconnect", net.ErrClosed, http.StatusOK},

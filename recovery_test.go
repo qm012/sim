@@ -228,16 +228,17 @@ func TestRedactedRequestDump(t *testing.T) {
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/secret?token=abc", nil)
 	req.Header.Set("Authorization", "Bearer hunter2")
 	req.Header.Set("Proxy-Authorization", "Basic dXNlcjpwYXNz")
+	req.Header.Set("Cookie", "session=topsecret; theme=dark")
 	req.Header.Set("X-Custom", "visible")
 
 	dump := redactedRequestDump(req)
 
-	for _, secret := range []string{"hunter2", "dXNlcjpwYXNz"} {
+	for _, secret := range []string{"hunter2", "dXNlcjpwYXNz", "topsecret"} {
 		if strings.Contains(dump, secret) {
 			t.Errorf("dump leaks %q: %q", secret, dump)
 		}
 	}
-	for _, masked := range []string{"Authorization: *", "Proxy-Authorization: *"} {
+	for _, masked := range []string{"Authorization: *", "Proxy-Authorization: *", "Cookie: *"} {
 		if !strings.Contains(dump, masked) {
 			t.Errorf("dump does not mask %q: %q", masked, dump)
 		}
@@ -250,6 +251,40 @@ func TestRedactedRequestDump(t *testing.T) {
 	}
 	if got := req.Header.Get("Proxy-Authorization"); got != "Basic dXNlcjpwYXNz" {
 		t.Errorf("original Proxy-Authorization = %q, want unchanged", got)
+	}
+	if got := req.Header.Get("Cookie"); got != "session=topsecret; theme=dark" {
+		t.Errorf("original Cookie = %q, want unchanged", got)
+	}
+}
+
+// TestRecoveryNilURLRequest guards against a secondary panic inside the
+// recovery path for programmatically built requests without a URL: the log
+// attrs and httputil.DumpRequest dereference r.URL, so such a request must
+// still be handled (500, or swallowed as a client disconnect) instead of
+// letting a nil pointer panic escape Recovery.
+func TestRecoveryNilURLRequest(t *testing.T) {
+	tests := []struct {
+		name  string
+		value any
+		code  int // httptest.ResponseRecorder default; 200 means nothing written
+	}{
+		{"panic", "boom", http.StatusInternalServerError},
+		{"client disconnect", net.ErrClosed, http.StatusOK},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			r := &http.Request{Method: http.MethodGet} // URL is nil
+			defer func() {
+				if v := recover(); v != nil {
+					t.Fatalf("secondary panic escaped Recovery: %v", v)
+				}
+			}()
+			NewRecovery().Handler(panicHandler(tt.value)).ServeHTTP(rec, r)
+			if rec.Code != tt.code {
+				t.Errorf("code = %d, want %d", rec.Code, tt.code)
+			}
+		})
 	}
 }
 

@@ -83,7 +83,7 @@ func (rc *Recovery) Handler(h http.Handler) http.Handler {
 					slog.GroupAttrs("request",
 						slog.String("pattern", r.Pattern),
 						slog.String("method", r.Method),
-						slog.String("path", r.URL.Path)),
+						slog.String("path", requestPath(r))),
 				)
 				return
 			}
@@ -93,7 +93,7 @@ func (rc *Recovery) Handler(h http.Handler) http.Handler {
 				slog.GroupAttrs("request",
 					slog.String("pattern", r.Pattern),
 					slog.String("method", r.Method),
-					slog.String("path", r.URL.Path),
+					slog.String("path", requestPath(r)),
 					slog.String("dump", redactedRequestDump(r))),
 			)
 			handlePanic(w, r, panicError)
@@ -102,12 +102,26 @@ func (rc *Recovery) Handler(h http.Handler) http.Handler {
 	})
 }
 
+func requestPath(r *http.Request) string {
+	if r.URL == nil {
+		return ""
+	}
+	return r.URL.Path
+}
+
 // redactedRequestDump returns a string representation of r for logging,
-// masking credential headers (Authorization, Proxy-Authorization).
+// masking credential headers (Authorization, Proxy-Authorization, Cookie).
 // It operates on a clone so the original request's headers are left untouched.
 func redactedRequestDump(r *http.Request) string {
+	if r.URL == nil {
+		// httputil.DumpRequest dereferences r.URL, so guard against
+		// programmatically built requests: a secondary panic raised inside
+		// the recovery path would escape Recovery and abort the connection
+		// without a response or a log.
+		return "<nil URL>"
+	}
 	r2 := r.Clone(r.Context())
-	for _, h := range []string{"Authorization", "Proxy-Authorization"} {
+	for _, h := range []string{"Authorization", "Proxy-Authorization", "Cookie"} {
 		if r2.Header.Get(h) != "" {
 			r2.Header.Set(h, "*")
 		}

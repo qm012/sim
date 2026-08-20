@@ -25,10 +25,29 @@
   ```
 * One logical change per PR, with tests — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## 3. Commands
+## 3. Go Documentation: Local GOROOT First
+
+* **Lookup order is mandatory: local toolchain first, web only as an
+  exception.** For Go standard library, language, or project-symbol
+  questions:
+  1. `go doc <pkg>` / `go doc <pkg>.<Symbol>` for API signatures and
+     doc comments (e.g. `go doc net/http.ServeMux`). Works for this
+     module too (e.g. `go doc github.com/qm012/sim.Chain`).
+  2. `go doc -all <pkg>` for a package's full documentation, and
+     `go doc -src <pkg>.<Symbol>` to jump straight to the source.
+  3. Read files directly under the GOROOT (`go env GOROOT`,
+     typically `<goroot>/src/<pkg>`) when even more context is
+     needed.
+* Do **not** use web search for Go documentation unless the user
+  explicitly asks to search the web, or the information genuinely
+  cannot be found in the local GOROOT (e.g. a proposal or release
+  note not shipped with the toolchain).
+
+## 4. Commands
 
 | Command       | Purpose                                          |
 |---------------|--------------------------------------------------|
 | `make test`   | `go test -v ./...` — full test suite             |
 | `make lint`   | golangci-lint via `tools/golangci-lint.mod`      |
 | `go mod tidy` | Sync `go.mod` / `go.sum` with imports            |
+| `go doc <pkg>`| Local Go docs — always prefer over web search    |

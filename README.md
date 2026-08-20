@@ -12,6 +12,8 @@ and `http.ServeMux` — no third-party dependencies.
 - Standard `net/http` handlers and wrappers
 - Wrapper composition with `Chain` and `ChainFunc`
 - Route groups
+- Client IP resolution: `ClientIPResolution` wrapper with trusted-proxy
+  support that populates `client_ip` in request logs
 - Graceful shutdown with `Run`
 
 ## Installation

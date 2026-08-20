@@ -298,3 +298,30 @@ func TestHandlerPropagatesPanicWithoutRecord(t *testing.T) {
 		t.Errorf("expected no log record on panic, got: %s", buf.String())
 	}
 }
+
+// TestLoggingClientIP asserts only the context wiring; resolution
+// behavior is covered by TestClientIPResolution.
+func TestLoggingClientIP(t *testing.T) {
+	rec := captureLogs(t, func() {
+		h := sim.Chain(sim.NewClientIPResolution().Handler, sim.NewRequestLogging().Handler)(
+			http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			}),
+		)
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
+		req.RemoteAddr = "192.0.2.1:1234"
+		h.ServeHTTP(httptest.NewRecorder(), req)
+	})
+	if got, want := rec["client_ip"], "192.0.2.1"; got != want {
+		t.Fatalf("client_ip = %v, want %v", got, want)
+	}
+}
+
+func TestLoggingWithoutClientIP(t *testing.T) {
+	rec := serveLogged(t, sim.NewRequestLogging(), http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}), "/", "/")
+	if _, ok := rec["client_ip"]; ok {
+		t.Fatalf("unexpected client_ip attribute: %v", rec["client_ip"])
+	}
+}

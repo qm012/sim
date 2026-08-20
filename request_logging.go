@@ -12,6 +12,8 @@ import (
 )
 
 // RequestLogging logs each HTTP request via slog.
+// If a [ClientIPResolution] handler wrapped the request, the resolved client IP is
+// included as a client_ip attribute.
 type RequestLogging struct {
 	// OmitBytesWritten omits the response body bytes from the logged record.
 	OmitBytesWritten bool
@@ -63,6 +65,9 @@ func (rl *RequestLogging) Handler(h http.Handler) http.Handler {
 		}
 		if !omitBytesWritten {
 			attrs = append(attrs, slog.Int("bytes_written", rw.bytesWritten))
+		}
+		if ip := ClientIPFromContext(r.Context()); ip != "" {
+			attrs = append(attrs, slog.String("client_ip", ip))
 		}
 		if extraAttrs != nil {
 			attrs = append(attrs, extraAttrs(r)...)

@@ -66,7 +66,8 @@ func (c *ClientIPResolution) Handler(h http.Handler) http.Handler {
 	if slices.Equal(trustedCIDRs, TrustAllCIDRs) {
 		slog.Warn("client ip resolution trusts all peers: any client can forge X-Forwarded-For and X-Real-IP",
 			slog.String("hint", "only use TrustAllCIDRs when your front-end proxy reliably overwrites "+
-				"forwarding headers; prefer setting your proxy CIDRs instead"))
+				"forwarding headers; prefer assigning your proxy CIDRs to ClientIPResolution.TrustedCIDRs, "+
+				`e.g. []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}`))
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip := ""

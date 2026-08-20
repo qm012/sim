@@ -5,7 +5,6 @@
 package sim_test
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -183,7 +182,7 @@ func TestClientIPResolutionHandlerCapturesFieldsAtCallTime(t *testing.T) {
 }
 
 func TestClientIPFromContextUnwrapped(t *testing.T) {
-	if got := sim.ClientIPFromContext(context.Background()); got != "" {
+	if got := sim.ClientIPFromContext(t.Context()); got != "" {
 		t.Fatalf("ClientIPFromContext() = %q, want empty", got)
 	}
 }

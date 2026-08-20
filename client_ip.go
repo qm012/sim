@@ -60,7 +60,6 @@ func NewClientIPResolution() *ClientIPResolution {
 // It captures the current field values at call time;
 // later changes do not affect the returned handler.
 func (c *ClientIPResolution) Handler(h http.Handler) http.Handler {
-	// Snapshot the configuration; c is not referenced after this point.
 	trustedCIDRs := c.TrustedCIDRs
 	lookup := c.Lookup
 	if slices.Equal(trustedCIDRs, TrustAllCIDRs) {
@@ -75,7 +74,7 @@ func (c *ClientIPResolution) Handler(h http.Handler) http.Handler {
 			ip = lookup(r)
 		}
 		if ip == "" {
-			ip = clientIP(r, trustedCIDRs)
+			ip = clientIPFromRequest(r, trustedCIDRs)
 		}
 		ctx := context.WithValue(r.Context(), ctxClientIPKey{}, ip)
 		h.ServeHTTP(w, r.WithContext(ctx))
@@ -93,8 +92,9 @@ func ClientIPFromContext(ctx context.Context) string {
 
 type ctxClientIPKey struct{}
 
-// clientIP returns the client IP for r, or "" when it cannot be determined.
-func clientIP(r *http.Request, trustedCIDRs []netip.Prefix) string {
+// clientIPFromRequest returns the client IP for r, or "" when it cannot
+// be determined.
+func clientIPFromRequest(r *http.Request, trustedCIDRs []netip.Prefix) string {
 	peerIPAddr := peerIP(r)
 	if !peerIPAddr.IsValid() {
 		return ""
@@ -103,7 +103,7 @@ func clientIP(r *http.Request, trustedCIDRs []netip.Prefix) string {
 	if slices.ContainsFunc(trustedCIDRs, func(cidr netip.Prefix) bool {
 		return cidr.Contains(peerIPAddr)
 	}) {
-		if ip := ipFromXForwardedFor(r.Header, trustedCIDRs); ip.IsValid() {
+		if ip := clientIPFromXForwardedFor(r.Header, trustedCIDRs); ip.IsValid() {
 			return ip.String()
 		}
 		// X-Real-IP carries a single value: the trusted proxy's verdict.
@@ -114,11 +114,11 @@ func clientIP(r *http.Request, trustedCIDRs []netip.Prefix) string {
 	return peerIPAddr.String()
 }
 
-// ipFromXForwardedFor walks the X-Forwarded-For chain from the right,
+// clientIPFromXForwardedFor walks the X-Forwarded-For chain from the right,
 // skipping trusted proxies, and returns the first entry that is not a
 // trusted proxy, or the leftmost entry when the whole chain is trusted.
 // It returns the zero Addr when the chain is absent or malformed.
-func ipFromXForwardedFor(header http.Header, trustedCIDRs []netip.Prefix) netip.Addr {
+func clientIPFromXForwardedFor(header http.Header, trustedCIDRs []netip.Prefix) netip.Addr {
 	value := strings.Join(header.Values("X-Forwarded-For"), ",")
 	for i, entry := range slices.Backward(strings.Split(value, ",")) {
 		ip, err := netip.ParseAddr(strings.TrimSpace(entry))

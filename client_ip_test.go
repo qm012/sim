@@ -23,8 +23,8 @@ func newRequest(t *testing.T, mutate func(*http.Request)) *http.Request {
 	return req
 }
 
-// serveIP wraps h in c's handler and returns the client IP the inner
-// handler reads back from the request context.
+// serveIP serves a request through c's handler and returns the client
+// IP the inner handler reads from the request context.
 func serveIP(t *testing.T, c *sim.ClientIPResolution, mutate func(*http.Request)) string {
 	t.Helper()
 	var got string

@@ -1,23 +1,42 @@
-# Sim Web Framework
+# Sim
 
-Sim is a minimal HTTP web framework for Go, built on top of `net/http`
-and `http.ServeMux` — no third-party dependencies.
+[![Latest Release](https://img.shields.io/github/v/release/qm012/sim)](https://github.com/qm012/sim/releases)
+[![Tests](https://github.com/qm012/sim/actions/workflows/testing.yml/badge.svg)](https://github.com/qm012/sim/actions/workflows/testing.yml)
+[![Lint](https://github.com/qm012/sim/actions/workflows/golangci-lint.yml/badge.svg)](https://github.com/qm012/sim/actions/workflows/golangci-lint.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/qm012/sim.svg)](https://pkg.go.dev/github.com/qm012/sim)
+[![Go 1.26+](https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go)](https://go.dev)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+**Not another web framework — the missing layer on top of `net/http`.**
+
+Sim (short for *simple*) is a minimal HTTP web framework for Go, built on
+top of `net/http` and `http.ServeMux` — no third-party dependencies. It
+adds wrappers and utilities while keeping stdlib handlers intact and
+native performance untouched. Simple, not simplistic.
 
 ## Features
 
-- Zero dependencies: only the Go standard library
+**Core**
+
+- Zero dependencies — only the Go standard library
 - Method-based routing: `Get`, `Post`, `Put`, `Delete`, `Patch`,
   `Options`, `Head`, `Connect`, `Trace`, and `Any`
 - Routing follows the [net/http.ServeMux](https://pkg.go.dev/net/http#ServeMux) patterns
-- Standard `net/http` handlers and wrappers
+- Route groups under a common prefix
+- Standard `net/http` handlers work everywhere — no framework-specific
+  context type to learn
 - Wrapper composition with `Chain` and `ChainFunc`
-- Route groups
-- Client IP resolution: `ClientIPResolution` wrapper with trusted-proxy
-  support that populates `client_ip` in request logs
-- Request logging: `RequestLogging` wrapper writing structured `slog` records
-- Panic recovery: `Recovery` wrapper logging a stack trace and writing a 500
-- `Default` bundles those three wrappers, ready to use with no configuration
 - Graceful shutdown with `Run`
+
+**Built-in wrappers**
+
+| Wrapper              | What it does                                                                            |
+|----------------------|-----------------------------------------------------------------------------------------|
+| `ClientIPResolution` | Resolves the real client IP behind trusted proxies and adds `client_ip` to request logs |
+| `RequestLogging`     | Writes structured `slog` records per request                                            |
+| `Recovery`           | Turns panics into a logged stack trace and HTTP 500 instead of a crash                  |
+
+`Default` bundles all three wrappers, ready to use with no configuration.
 
 ## Installation
 
@@ -25,6 +44,27 @@ Requires Go 1.26+.
 
 ```bash
 go get github.com/qm012/sim
+```
+
+## Quick start
+
+```go
+package main
+
+import (
+	"context"
+	"net/http"
+
+	"github.com/qm012/sim"
+)
+
+func main() {
+	app := sim.Default()
+	app.Get("/", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("hello, sim"))
+	})
+	_ = app.Run(context.Background(), ":8080")
+}
 ```
 
 ## Example

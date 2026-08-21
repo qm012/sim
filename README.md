@@ -51,10 +51,10 @@ func main() {
 	// ClientIPResolution, RequestLogging, Recovery.
 	app := sim.Default()
 
-	app.Get("/", func(w http.ResponseWriter, r *http.Request) {
+	app.Get("/", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("welcome"))
 	})
-	app.Any("/ping", func(w http.ResponseWriter, r *http.Request) {
+	app.Any("/ping", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("pong"))
 	})
 
@@ -87,7 +87,7 @@ func auth(next http.Handler) http.Handler {
 	})
 }
 
-func listUsers(w http.ResponseWriter, r *http.Request) {
+func listUsers(w http.ResponseWriter, _ *http.Request) {
 	_, _ = fmt.Fprintln(w, "list users")
 }
 
@@ -95,7 +95,7 @@ func getUser(w http.ResponseWriter, r *http.Request) {
 	_, _ = fmt.Fprintf(w, "user %s", r.PathValue("id"))
 }
 
-func createUser(w http.ResponseWriter, r *http.Request) {
+func createUser(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 	_, _ = fmt.Fprintln(w, "user created")
 }
@@ -104,11 +104,11 @@ func updateUser(w http.ResponseWriter, r *http.Request) {
 	_, _ = fmt.Fprintf(w, "user %s updated", r.PathValue("id"))
 }
 
-func deleteUser(w http.ResponseWriter, r *http.Request) {
+func deleteUser(w http.ResponseWriter, _ *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func adminPanel(w http.ResponseWriter, r *http.Request) {
+func adminPanel(w http.ResponseWriter, _ *http.Request) {
 	_, _ = fmt.Fprintln(w, "admin")
 }
 ```

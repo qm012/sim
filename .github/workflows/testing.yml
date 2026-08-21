@@ -19,7 +19,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
-        go-version: ["1.26.x"]
+        go-version: ["1.26.x", "1.27.x"]
     name: ${{ matrix.os }} @ Go ${{ matrix.go-version }}
     runs-on: ${{ matrix.os }}
     steps:
@@ -39,7 +39,7 @@ jobs:
           go test -v -race -covermode=atomic -coverprofile=coverage.txt -coverpkg=./... ./...
 
       - name: Archive code coverage results
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest' && matrix.go-version == '1.27.x'
         uses: actions/upload-artifact@v7
         with:
           name: code-coverage

@@ -72,6 +72,35 @@ func TestNewApp(t *testing.T) {
 	}
 }
 
+func TestDefault(t *testing.T) {
+	app := sim.Default()
+	app.Get("/ok", markHandlerFunc("ok"))
+	app.Get("/panic", func(http.ResponseWriter, *http.Request) { panic("boom") })
+
+	t.Run("serves routes", func(t *testing.T) {
+		expect(t, app, http.MethodGet, "/ok", "ok")
+	})
+
+	t.Run("wrapper composition", func(t *testing.T) {
+		var res *httptest.ResponseRecorder
+		rec := captureLogs(t, func() {
+			res = serve(t, app, http.MethodGet, "/panic")
+		})
+		if res.Code != http.StatusInternalServerError {
+			t.Errorf("GET /panic = %d, want %d", res.Code, http.StatusInternalServerError)
+		}
+		if got := rec["msg"]; got != "served http request" {
+			t.Fatalf("last record msg = %v, want %q", got, "served http request")
+		}
+		if got := rec["status_code"]; got != float64(http.StatusInternalServerError) {
+			t.Errorf("status_code = %v, want %d", got, http.StatusInternalServerError)
+		}
+		if ip, _ := rec["client_ip"].(string); ip == "" {
+			t.Errorf("client_ip = %v, want the peer address", rec["client_ip"])
+		}
+	})
+}
+
 func TestHandleHostPatterns(t *testing.T) {
 	app := sim.NewApp()
 	app.Handle("api.example.com/", markHandler("host"))

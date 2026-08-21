@@ -14,6 +14,9 @@ and `http.ServeMux` — no third-party dependencies.
 - Route groups
 - Client IP resolution: `ClientIPResolution` wrapper with trusted-proxy
   support that populates `client_ip` in request logs
+- Request logging: `RequestLogging` wrapper writing structured `slog` records
+- Panic recovery: `Recovery` wrapper logging a stack trace and writing a 500
+- `Default` bundles those three wrappers, ready to use with no configuration
 - Graceful shutdown with `Run`
 
 ## Installation
@@ -44,10 +47,9 @@ import (
 )
 
 func main() {
-	app := sim.NewApp()
-
-	// Use registers wrappers that run on every handler below.
-	app.Use(logging)
+	// Default registers three wrappers, outermost first:
+	// ClientIPResolution, RequestLogging, Recovery.
+	app := sim.Default()
 
 	app.Get("/", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte("welcome"))
@@ -73,13 +75,6 @@ func main() {
 	if err := app.Run(ctx, ":8080"); err != nil {
 		log.Fatal(err)
 	}
-}
-
-func logging(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		log.Printf("%s %s", r.Method, r.URL.Path)
-		next.ServeHTTP(w, r)
-	})
 }
 
 func auth(next http.Handler) http.Handler {

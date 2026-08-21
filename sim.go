@@ -19,7 +19,7 @@
 //	)
 //
 //	func main() {
-//		app := sim.NewApp()
+//		app := sim.Default()
 //
 //		app.Get("/", func(w http.ResponseWriter, _ *http.Request) {
 //			w.Write([]byte("root."))
@@ -68,7 +68,8 @@
 // registered after the call, with the first wrapper outermost.
 // [Chain] composes wrappers into one; [ChainFunc] is its counterpart
 // over http.HandlerFunc, the type accepted by the method helpers such
-// as [App.Get].
+// as [App.Get]. [Default] returns an App with the standard wrappers
+// already registered.
 //
 // See the documentation of [App] for the full routing API.
 package sim

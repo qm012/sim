@@ -38,15 +38,48 @@ type App struct {
 	ss []func(http.Handler) http.Handler
 }
 
+var (
+	_ Router       = (*App)(nil)
+	_ http.Handler = (*App)(nil)
+)
+
 // NewApp returns a new [App] value.
 func NewApp() *App {
 	return &App{mux: http.NewServeMux()}
 }
 
-var (
-	_ Router       = (*App)(nil)
-	_ http.Handler = (*App)(nil)
-)
+// Default returns a new [App] with the standard wrappers already
+// registered by [App.Use], outermost first:
+//
+//   - [ClientIPResolution] resolves the client IP into the request context.
+//   - [RequestLogging] logs each request, including the resolved client_ip.
+//   - [Recovery] recovers panics raised by the handler.
+//
+// The order is fixed by the wrappers themselves: ClientIPResolution must
+// run before RequestLogging reads the client IP, and RequestLogging must
+// sit outside Recovery so a recovered panic is logged as the 500 response
+// it becomes. Recovery is therefore innermost, and a panic raised by
+// [ClientIPResolution.Lookup] is not recovered.
+//
+// Default takes no configuration; every wrapper runs with its zero-value
+// defaults. To tune one, register the same set explicitly:
+//
+//	clientIP := NewClientIPResolution()
+//	clientIP.TrustedCIDRs = []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}
+//	app := NewApp()
+//	app.Use(clientIP.Handler, NewRequestLogging().Handler, NewRecovery().Handler)
+//
+// Each wrapper snapshots its fields when a registration method such as
+// [App.Get] applies it, so configure a wrapper before registering routes.
+func Default() *App {
+	app := NewApp()
+	app.Use(
+		NewClientIPResolution().Handler,
+		NewRequestLogging().Handler,
+		NewRecovery().Handler,
+	)
+	return app
+}
 
 // Use registers the given wrappers and applies them to every handler
 // registered after this call. Wrappers run in registration order:

@@ -39,7 +39,7 @@ func serveRecovery(t *testing.T, rc *Recovery, h http.Handler) (*httptest.Respon
 }
 
 func TestRecoveryPassesThroughNormalRequests(t *testing.T) {
-	rc := NewRecovery()
+	rc := &Recovery{}
 	rc.HandlePanic = func(http.ResponseWriter, *http.Request, *PanicError) {
 		t.Error("HandlePanic called for a request without a panic")
 	}
@@ -55,7 +55,7 @@ func TestRecoveryPassesThroughNormalRequests(t *testing.T) {
 }
 
 func TestRecoveryDefaultHandlePanic(t *testing.T) {
-	rec, _ := serveRecovery(t, NewRecovery(), panicHandler("boom"))
+	rec, _ := serveRecovery(t, new(Recovery), panicHandler("boom"))
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("code = %d, want %d", rec.Code, http.StatusInternalServerError)
 	}
@@ -69,7 +69,7 @@ func TestRecoveryCustomHandlePanic(t *testing.T) {
 		gotPE  *PanicError
 		gotReq *http.Request
 	)
-	rc := NewRecovery()
+	rc := &Recovery{}
 	rc.HandlePanic = func(w http.ResponseWriter, r *http.Request, pe *PanicError) {
 		gotPE = pe
 		gotReq = r
@@ -99,7 +99,7 @@ func TestRecoveryCustomHandlePanic(t *testing.T) {
 func TestRecoveryReadsRequestAtPanicTime(t *testing.T) {
 	type ctxKey struct{}
 	var gotReq *http.Request
-	rc := NewRecovery()
+	rc := &Recovery{}
 	rc.HandlePanic = func(_ http.ResponseWriter, r *http.Request, _ *PanicError) {
 		gotReq = r
 	}
@@ -137,7 +137,7 @@ func TestRecoveryPanicValues(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var gotPE *PanicError
-			rc := NewRecovery()
+			rc := &Recovery{}
 			rc.HandlePanic = func(_ http.ResponseWriter, _ *http.Request, pe *PanicError) {
 				gotPE = pe
 			}
@@ -186,7 +186,7 @@ func TestRecoverySpecialPanics(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rc := NewRecovery()
+			rc := &Recovery{}
 			rc.HandlePanic = func(http.ResponseWriter, *http.Request, *PanicError) {
 				t.Error("HandlePanic must not be called")
 			}
@@ -275,7 +275,7 @@ func TestRecoveryNilURLRequest(t *testing.T) {
 					t.Fatalf("secondary panic escaped Recovery: %v", v)
 				}
 			}()
-			NewRecovery().Handler(panicHandler(tt.value)).ServeHTTP(rec, r)
+			new(Recovery).Handler(panicHandler(tt.value)).ServeHTTP(rec, r)
 			if rec.Code != tt.code {
 				t.Errorf("code = %d, want %d", rec.Code, tt.code)
 			}
@@ -293,7 +293,7 @@ func TestRecoveryLogging(t *testing.T) {
 		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/secret", nil)
 		req.Header.Set("Authorization", "Bearer hunter2")
 		rec := httptest.NewRecorder()
-		NewRecovery().Handler(panicHandler("boom")).ServeHTTP(rec, req)
+		new(Recovery).Handler(panicHandler("boom")).ServeHTTP(rec, req)
 
 		if rec.Code != http.StatusInternalServerError {
 			t.Errorf("code = %d, want %d", rec.Code, http.StatusInternalServerError)
@@ -313,7 +313,7 @@ func TestRecoveryLogging(t *testing.T) {
 
 	t.Run("client disconnect", func(t *testing.T) {
 		buf.Reset()
-		serveRecovery(t, NewRecovery(), panicHandler(net.ErrClosed))
+		serveRecovery(t, new(Recovery), panicHandler(net.ErrClosed))
 		if out := buf.String(); !strings.Contains(out, "[Recovery] client disconnected") {
 			t.Errorf("log missing %q:\n%s", "[Recovery] client disconnected", out)
 		}

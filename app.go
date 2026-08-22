@@ -64,19 +64,20 @@ func NewApp() *App {
 // Default takes no configuration; every wrapper runs with its zero-value
 // defaults. To tune one, register the same set explicitly:
 //
-//	clientIP := NewClientIPResolution()
-//	clientIP.TrustedCIDRs = []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}
+//	clientIP := &ClientIPResolution{
+//		TrustedCIDRs: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")},
+//	}
 //	app := NewApp()
-//	app.Use(clientIP.Handler, NewRequestLogging().Handler, NewRecovery().Handler)
+//	app.Use(clientIP.Handler, new(RequestLogging).Handler, new(Recovery).Handler)
 //
 // Each wrapper snapshots its fields when a registration method such as
 // [App.Get] applies it, so configure a wrapper before registering routes.
 func Default() *App {
 	app := NewApp()
 	app.Use(
-		NewClientIPResolution().Handler,
-		NewRequestLogging().Handler,
-		NewRecovery().Handler,
+		new(ClientIPResolution).Handler,
+		new(RequestLogging).Handler,
+		new(Recovery).Handler,
 	)
 	return app
 }

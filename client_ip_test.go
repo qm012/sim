@@ -151,9 +151,10 @@ func TestClientIPResolution(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			c := sim.NewClientIPResolution()
-			c.TrustedCIDRs = tt.trust
-			c.Lookup = tt.lookup
+			c := &sim.ClientIPResolution{
+				TrustedCIDRs: tt.trust,
+				Lookup:       tt.lookup,
+			}
 			if got := serveIP(t, c, tt.mutate); got != tt.want {
 				t.Fatalf("ClientIPResolution() = %q, want %q", got, tt.want)
 			}
@@ -162,8 +163,9 @@ func TestClientIPResolution(t *testing.T) {
 }
 
 func TestClientIPResolutionHandlerCapturesFieldsAtCallTime(t *testing.T) {
-	c := sim.NewClientIPResolution()
-	c.TrustedCIDRs = []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}
+	c := &sim.ClientIPResolution{
+		TrustedCIDRs: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")},
+	}
 	var got string
 	h := c.Handler(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		got = sim.ClientIPFromContext(r.Context())

@@ -117,7 +117,7 @@ func TestLoggingRecord(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rec := serveLogged(t, sim.NewRequestLogging(), tt.handler, tt.target, tt.pattern)
+			rec := serveLogged(t, new(sim.RequestLogging), tt.handler, tt.target, tt.pattern)
 			if got := rec["msg"]; got != wantMsg {
 				t.Errorf("msg = %v, want %q", got, wantMsg)
 			}
@@ -150,14 +150,13 @@ func TestLoggingBytesWritten(t *testing.T) {
 		_, _ = w.Write([]byte(body))
 	})
 	t.Run("records bytes by default", func(t *testing.T) {
-		rec := serveLogged(t, sim.NewRequestLogging(), handler, "/", "")
+		rec := serveLogged(t, new(sim.RequestLogging), handler, "/", "")
 		if got := rec["bytes_written"]; got != float64(len(body)) {
 			t.Errorf("bytes_written = %v, want %d", got, len(body))
 		}
 	})
 	t.Run("omitted when disabled", func(t *testing.T) {
-		rl := sim.NewRequestLogging()
-		rl.OmitBytesWritten = true
+		rl := &sim.RequestLogging{OmitBytesWritten: true}
 		rec := serveLogged(t, rl, handler, "/", "")
 		if _, ok := rec["bytes_written"]; ok {
 			t.Errorf("bytes_written present with OmitBytesWritten: %v", rec)
@@ -166,9 +165,10 @@ func TestLoggingBytesWritten(t *testing.T) {
 }
 
 func TestLoggingExtraAttrs(t *testing.T) {
-	rl := sim.NewRequestLogging()
-	rl.ExtraAttrs = func(_ *http.Request) []slog.Attr {
-		return []slog.Attr{slog.String("user_id", "u1")}
+	rl := &sim.RequestLogging{
+		ExtraAttrs: func(_ *http.Request) []slog.Attr {
+			return []slog.Attr{slog.String("user_id", "u1")}
+		},
 	}
 	rec := serveLogged(t, rl, http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}), "/", "")
 	if got := rec["user_id"]; got != "u1" {
@@ -177,9 +177,10 @@ func TestLoggingExtraAttrs(t *testing.T) {
 }
 
 func TestHandlerCapturesFieldsAtCallTime(t *testing.T) {
-	rl := sim.NewRequestLogging()
-	rl.ExtraAttrs = func(_ *http.Request) []slog.Attr {
-		return []slog.Attr{slog.String("user_id", "captured")}
+	rl := &sim.RequestLogging{
+		ExtraAttrs: func(_ *http.Request) []slog.Attr {
+			return []slog.Attr{slog.String("user_id", "captured")}
+		},
 	}
 	handler := rl.Handler(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
 
@@ -219,7 +220,7 @@ func TestLoggingPreservesFlusher(t *testing.T) {
 	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
 	captured := captureLogs(t, func() {
-		sim.NewRequestLogging().Handler(handler).ServeHTTP(rec, req)
+		new(sim.RequestLogging).Handler(handler).ServeHTTP(rec, req)
 	})
 	if rec.Code != http.StatusOK {
 		t.Errorf("status = %d, want 200; body = %q", rec.Code, rec.Body.String())
@@ -251,7 +252,7 @@ func TestLoggingPreservesHijacker(t *testing.T) {
 		_, _, hijackErr = hj.Hijack()
 	})
 	rec := &hijackableRecorder{ResponseRecorder: httptest.NewRecorder()}
-	sim.NewRequestLogging().Handler(handler).ServeHTTP(
+	new(sim.RequestLogging).Handler(handler).ServeHTTP(
 		rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil))
 	if !errors.Is(hijackErr, http.ErrNotSupported) {
 		t.Errorf("Hijack() error = %v, want http.ErrNotSupported", hijackErr)
@@ -263,14 +264,13 @@ func TestLoggingHideQueryString(t *testing.T) {
 		_, _ = w.Write([]byte("ok"))
 	})
 	t.Run("default records full uri", func(t *testing.T) {
-		rec := serveLogged(t, sim.NewRequestLogging(), handler, "/search?q=go", "")
+		rec := serveLogged(t, new(sim.RequestLogging), handler, "/search?q=go", "")
 		if got := requestGroup(t, rec)["uri"]; got != "/search?q=go" {
 			t.Errorf("uri = %v, want %q", got, "/search?q=go")
 		}
 	})
 	t.Run("hidden omits query", func(t *testing.T) {
-		rl := sim.NewRequestLogging()
-		rl.HideQueryString = true
+		rl := &sim.RequestLogging{HideQueryString: true}
 		rec := serveLogged(t, rl, handler, "/search?q=go&token=abc", "")
 		if got := requestGroup(t, rec)["uri"]; got != "/search" {
 			t.Errorf("uri = %v, want %q", got, "/search")
@@ -281,7 +281,7 @@ func TestLoggingHideQueryString(t *testing.T) {
 func TestHandlerPropagatesPanicWithoutRecord(t *testing.T) {
 	buf := captureLogBuffer(t)
 
-	handler := sim.NewRequestLogging().Handler(http.HandlerFunc(
+	handler := new(sim.RequestLogging).Handler(http.HandlerFunc(
 		func(http.ResponseWriter, *http.Request) { panic("boom") }))
 
 	func() {
@@ -302,7 +302,7 @@ func TestHandlerPropagatesPanicWithoutRecord(t *testing.T) {
 func TestLoggingClientIP(t *testing.T) {
 	t.Run("wrapped records client_ip", func(t *testing.T) {
 		rec := captureLogs(t, func() {
-			h := sim.Chain(sim.NewClientIPResolution().Handler, sim.NewRequestLogging().Handler)(
+			h := sim.Chain(new(sim.ClientIPResolution).Handler, new(sim.RequestLogging).Handler)(
 				http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 					w.WriteHeader(http.StatusOK)
 				}),
@@ -316,7 +316,7 @@ func TestLoggingClientIP(t *testing.T) {
 		}
 	})
 	t.Run("unwrapped omits client_ip", func(t *testing.T) {
-		rec := serveLogged(t, sim.NewRequestLogging(), http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		rec := serveLogged(t, new(sim.RequestLogging), http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		}), "/", "/")
 		if _, ok := rec["client_ip"]; ok {

@@ -14,8 +14,8 @@ import (
 // [runtime/pprof.Do]. The labels ride along with the request's
 // goroutine, so an active CPU profile and goroutine tracebacks since
 // Go 1.27 carry them (GODEBUG=tracebacklabels=0 disables the
-// latter), and panics recovered by [Recovery] are attributed to
-// their route.
+// latter); registered before [Recovery], they also attribute the
+// panics it recovers to their route.
 //
 // Register it after any wrapper whose values the Labels function reads
 // from the request context, such as a trace ID wrapper, since the
@@ -25,11 +25,12 @@ import (
 // register PprofLabeling, so compose the chain with [App.Use] as shown
 // on [Default].
 type PprofLabeling struct {
-	// Labels returns the key/value pairs applied to each request.
-	// Nil applies a single "pattern" label holding the matched pattern.
-	// Keep the cardinality bounded: a unique value per request, such as
-	// a trace ID, grows the profile linearly with the request count
-	// during the collection window.
+	// Labels returns the key/value pairs applied to each request, as
+	// alternating key, value strings of even length per
+	// [runtime/pprof.Labels]. Nil applies a single "pattern" label
+	// holding the matched pattern. Keep the cardinality bounded: a
+	// unique value per request, such as a trace ID, grows the profile
+	// linearly with the request count during the collection window.
 	Labels func(*http.Request) []string
 }
 

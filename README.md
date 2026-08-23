@@ -35,8 +35,13 @@ native performance untouched. Simple, not simplistic.
 | `ClientIPResolution` | Resolves the real client IP behind trusted proxies and adds `client_ip` to request logs |
 | `RequestLogging`     | Writes structured `slog` records per request                                            |
 | `Recovery`           | Turns panics into a logged stack trace and HTTP 500 instead of a crash                  |
+| `PprofLabeling`      | Labels each request's goroutine with its route pattern for pprof attribution (opt-in)   |
 
-`Default` bundles all three wrappers, ready to use with no configuration.
+`Default` bundles `ClientIPResolution`, `RequestLogging` and
+`Recovery`, ready to use with no configuration. `PprofLabeling` is
+opt-in: add it with `app.Use` when you need route attribution in
+profiles and tracebacks (see
+[examples/pprof-labeling](examples/pprof-labeling/README.md)).
 
 ## Installation
 

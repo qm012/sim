@@ -6,7 +6,6 @@ package sim_test
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -126,26 +125,4 @@ func TestPprofLabelingPropagatesPanic(t *testing.T) {
 	}()
 	handler.ServeHTTP(httptest.NewRecorder(),
 		httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/", nil))
-}
-
-func ExamplePprofLabeling() {
-	// Nil Labels defaults to a single "pattern" label; assign a Labels
-	// function to add per-request pairs such as a trace ID, and
-	// register the wrapper with Use, before Recovery.
-	pl := &sim.PprofLabeling{Labels: func(r *http.Request) []string {
-		return []string{"pattern", r.Pattern, "trace_id", "acme"}
-	}}
-	handler := pl.Handler(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-		pprof.ForLabels(r.Context(), func(key, value string) bool {
-			fmt.Println(key, value)
-			return true
-		})
-	}))
-
-	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil)
-	req.Pattern = "GET /"
-	handler.ServeHTTP(httptest.NewRecorder(), req)
-	// Output:
-	// pattern GET /
-	// trace_id acme
 }

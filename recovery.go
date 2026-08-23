@@ -74,22 +74,24 @@ func (rc *Recovery) Handler(h http.Handler) http.Handler {
 				errors.Is(err, syscall.EPIPE) ||
 				errors.Is(err, net.ErrClosed)) {
 				slog.WarnContext(r.Context(), "[Recovery] client disconnected",
-					slog.Any("err", err),
 					slog.GroupAttrs("request",
 						slog.String("pattern", r.Pattern),
 						slog.String("method", r.Method),
-						slog.String("path", requestPath(r))),
+						slog.String("path", requestPath(r)),
+					),
+					slog.Any("err", err),
 				)
 				return
 			}
 			panicError := &PanicError{Value: value, Stack: debug.Stack()}
 			slog.ErrorContext(r.Context(), "[Recovery] panic recovered",
-				slog.Any("err", panicError),
 				slog.GroupAttrs("request",
 					slog.String("pattern", r.Pattern),
 					slog.String("method", r.Method),
 					slog.String("path", requestPath(r)),
-					slog.String("dump", redactedRequestDump(r))),
+					slog.String("dump", redactedRequestDump(r)),
+				),
+				slog.Any("err", panicError),
 			)
 			handlePanic(w, r, panicError)
 		}()

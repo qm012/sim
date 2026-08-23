@@ -50,11 +50,6 @@ type ClientIPResolution struct {
 	Lookup func(*http.Request) string
 }
 
-// NewClientIPResolution returns a new ClientIPResolution.
-func NewClientIPResolution() *ClientIPResolution {
-	return &ClientIPResolution{}
-}
-
 // Handler resolves the client IP for each request and stores it in the
 // request context for [ClientIPFromContext].
 // It captures the current field values at call time;

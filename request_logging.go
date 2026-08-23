@@ -24,11 +24,6 @@ type RequestLogging struct {
 	ExtraAttrs func(*http.Request) []slog.Attr
 }
 
-// NewRequestLogging returns a new RequestLogging.
-func NewRequestLogging() *RequestLogging {
-	return &RequestLogging{}
-}
-
 // Handler wraps h and logs each request it serves.
 // It captures the current field values at call time;
 // later changes do not affect the returned handler.

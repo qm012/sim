@@ -30,11 +30,6 @@ type Recovery struct {
 	HandlePanic func(http.ResponseWriter, *http.Request, *PanicError)
 }
 
-// NewRecovery returns a new Recovery.
-func NewRecovery() *Recovery {
-	return &Recovery{}
-}
-
 func defaultHandlePanic(w http.ResponseWriter, _ *http.Request, _ *PanicError) {
 	http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
 }

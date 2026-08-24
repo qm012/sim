@@ -114,6 +114,11 @@ linters:
       - path: responder(_test)?\.go
         linters:
           - wrapcheck
+      # binder passes decode and validation errors through verbatim so
+      # callers can respond with them unchanged.
+      - path: binder\.go
+        linters:
+          - wrapcheck
 formatters:
   enable:
     - gofmt

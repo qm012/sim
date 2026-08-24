@@ -30,6 +30,8 @@ native performance untouched. Simple, not simplistic.
 - Response helpers: `JSON` (with `EscapeForHTML` / `Indented` options),
   `XML`, `Text`, `Bytes`, `Stream` for chunked streaming, and
   `Attachment` for file downloads
+- Request binding into structs with `query`, `form`, `path`, `header`
+  and JSON/XML tags
 - Graceful shutdown with `Run`
 
 **Built-in wrappers**
@@ -41,6 +43,18 @@ native performance untouched. Simple, not simplistic.
 | `Recovery`           | Turns panics into a logged stack trace and HTTP 500 instead of a crash                  |
 
 `Default` bundles all three wrappers, ready to use with no configuration.
+
+**Request binding**
+
+- Bind requests into your own structs: `BindJSON`, `BindXML`,
+  `BindQuery`, `BindForm`, `BindPath` and `BindHeader`
+- Struct tags with `default=` values, embedded structs, multipart file
+  uploads and map targets
+- Validation via `Validator`, custom formats via `Decoder`
+- Read the request body more than once with `BufferBody`
+
+See the [package documentation](https://pkg.go.dev/github.com/qm012/sim)
+for the full struct-tag rules.
 
 ## Installation
 
@@ -141,17 +155,36 @@ func auth(next http.Handler) http.Handler {
 	})
 }
 
-func listUsers(w http.ResponseWriter, _ *http.Request) {
-	_, _ = fmt.Fprintln(w, "list users")
+func listUsers(w http.ResponseWriter, r *http.Request) {
+	// BindQuery fills a struct from the URL query; page defaults to 1.
+	q, err := sim.BindQuery[struct {
+		Page int `query:"page,default=1"`
+	}](r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	_, _ = fmt.Fprintf(w, "list users, page %d\n", q.Page)
 }
 
 func getUser(w http.ResponseWriter, r *http.Request) {
 	_, _ = fmt.Fprintf(w, "user %s", r.PathValue("id"))
 }
 
-func createUser(w http.ResponseWriter, _ *http.Request) {
+// user is the payload createUser decodes from the request body.
+type user struct {
+	Name string `json:"name"`
+	Age  int    `json:"age"`
+}
+
+func createUser(w http.ResponseWriter, r *http.Request) {
+	u, err := sim.BindJSON[user](r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	w.WriteHeader(http.StatusCreated)
-	_, _ = fmt.Fprintln(w, "user created")
+	_, _ = fmt.Fprintf(w, "user %s created\n", u.Name)
 }
 
 func updateUser(w http.ResponseWriter, r *http.Request) {
@@ -173,8 +206,14 @@ Save it as `main.go` and run it:
 go run main.go
 ```
 
-Open http://localhost:8080/ to see "welcome", and http://localhost:8080/api/users
-for the user list.
+Open http://localhost:8080/ to see "welcome", and
+http://localhost:8080/api/users for the user list. The endpoints speak
+HTTP, so try binding too:
+
+```bash
+curl 'localhost:8080/api/users?page=2'
+curl -X POST localhost:8080/api/users -d '{"name":"alice","age":30}'
+```
 
 ## Contributing
 

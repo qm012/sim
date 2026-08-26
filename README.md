@@ -26,6 +26,7 @@ native performance untouched. Simple, not simplistic.
 - Standard `net/http` handlers work everywhere — no framework-specific
   context type to learn
 - Wrapper composition with `Chain` and `ChainFunc`
+- Conditional wrapper application with `Selector`
 - Graceful shutdown with `Run`
 
 **Built-in wrappers**
@@ -87,9 +88,19 @@ import (
 )
 
 func main() {
-	// Default registers three wrappers, outermost first:
-	// ClientIPResolution, RequestLogging, Recovery.
-	app := sim.Default()
+	// NewApp starts with no wrappers; register them explicitly,
+	// outermost first.
+	app := sim.NewApp()
+
+	logging := new(sim.RequestLogging)
+	app.Use(
+		new(sim.ClientIPResolution).Handler,
+		// Log every request except the ping endpoint.
+		sim.Selector(logging.Handler, func(r *http.Request) bool {
+			return r.URL.Path != "/ping"
+		}),
+		new(sim.Recovery).Handler,
+	)
 
 	app.Get("/", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("welcome"))

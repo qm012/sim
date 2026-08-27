@@ -285,6 +285,117 @@ func TestMethodNotAllowed(t *testing.T) {
 	}
 }
 
+func handle404405App(notFound, notAllowed http.Handler) *sim.App {
+	app := sim.NewApp()
+	app.Get("/items", markHandlerFunc("items"))
+	app.SetNotFoundHandler(notFound)
+	app.SetMethodNotAllowedHandler(notAllowed)
+	return app
+}
+
+func statusHandler(code int, body string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(code)
+		_, _ = io.WriteString(w, body)
+	})
+}
+
+func TestCustomErrorHandlers(t *testing.T) {
+	notFound := statusHandler(http.StatusNotFound, "nf")
+	notAllowed := statusHandler(http.StatusMethodNotAllowed, "mna")
+
+	tests := []struct {
+		name       string
+		notFound   http.Handler
+		notAllowed http.Handler
+		method     string
+		target     string
+		wantCode   int
+		wantBody   string
+	}{
+		{
+			name:     "custom not found",
+			notFound: notFound,
+			method:   http.MethodGet,
+			target:   "/nope",
+			wantCode: http.StatusNotFound,
+			wantBody: "nf",
+		},
+		{
+			name:       "custom method not allowed",
+			notAllowed: notAllowed,
+			method:     http.MethodPost,
+			target:     "/items",
+			wantCode:   http.StatusMethodNotAllowed,
+			wantBody:   "mna",
+		},
+		{
+			name:       "default not found when only 405 handler set",
+			notAllowed: notAllowed,
+			method:     http.MethodGet,
+			target:     "/nope",
+			wantCode:   http.StatusNotFound,
+			wantBody:   "404 page not found\n",
+		},
+		{
+			name:     "default method not allowed when only 404 handler set",
+			notFound: notFound,
+			method:   http.MethodPost,
+			target:   "/items",
+			wantCode: http.StatusMethodNotAllowed,
+			wantBody: "Method Not Allowed\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := serve(t, handle404405App(tt.notFound, tt.notAllowed), tt.method, tt.target)
+			if rec.Code != tt.wantCode {
+				t.Fatalf("%s %s = %d, want %d", tt.method, tt.target, rec.Code, tt.wantCode)
+			}
+			if rec.Body.String() != tt.wantBody {
+				t.Errorf("%s %s body = %q, want %q", tt.method, tt.target, rec.Body.String(), tt.wantBody)
+			}
+			if tt.wantCode == http.StatusMethodNotAllowed &&
+				!strings.Contains(rec.Header().Get("Allow"), http.MethodGet) {
+				t.Errorf("Allow = %q, want it to contain %q", rec.Header().Get("Allow"), http.MethodGet)
+			}
+		})
+	}
+}
+
+func TestCustomErrorHandlersBothSet(t *testing.T) {
+	app := handle404405App(statusHandler(http.StatusNotFound, "nf"), statusHandler(http.StatusMethodNotAllowed, "mna"))
+
+	if rec := serve(t, app, http.MethodGet, "/nope"); rec.Code != http.StatusNotFound || rec.Body.String() != "nf" {
+		t.Errorf("GET /nope = %d %q, want %d %q", rec.Code, rec.Body.String(), http.StatusNotFound, "nf")
+	}
+	rec := serve(t, app, http.MethodPost, "/items")
+	if rec.Code != http.StatusMethodNotAllowed || rec.Body.String() != "mna" {
+		t.Errorf("POST /items = %d %q, want %d %q", rec.Code, rec.Body.String(), http.StatusMethodNotAllowed, "mna")
+	}
+	if allow := rec.Header().Get("Allow"); !strings.Contains(allow, http.MethodGet) {
+		t.Errorf("Allow = %q, want it to contain %q", allow, http.MethodGet)
+	}
+}
+
+// Matched routes and redirects must be unaffected by the custom
+// error handlers.
+func TestCustomErrorHandlersDoNotAffectRouting(t *testing.T) {
+	app := handle404405App(statusHandler(http.StatusNotFound, "nf"), statusHandler(http.StatusMethodNotAllowed, "mna"))
+	app.Get("/tree/", markHandlerFunc("tree"))
+
+	expect(t, app, http.MethodGet, "/items", "items")
+	expect(t, app, http.MethodGet, "/tree/", "tree")
+
+	rec := serve(t, app, http.MethodGet, "/tree")
+	if rec.Code != http.StatusTemporaryRedirect {
+		t.Fatalf("GET /tree = %d, want %d", rec.Code, http.StatusTemporaryRedirect)
+	}
+	if loc := rec.Header().Get("Location"); loc != "/tree/" {
+		t.Errorf("Location = %q, want %q", loc, "/tree/")
+	}
+}
+
 func TestConflictingPatternPanics(t *testing.T) {
 	app := sim.NewApp()
 	app.Get("/a/{x}", markHandlerFunc("first"))

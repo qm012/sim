@@ -245,7 +245,10 @@ func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	h, pattern := a.mux.Handler(r)
 	if pattern != "" {
-		h.ServeHTTP(w, r)
+		// Re-dispatch through ServeHTTP instead of serving h: Handler
+		// does not populate r.pat/r.matches, so r.Pattern and
+		// r.PathValue would be broken for wildcard patterns.
+		a.mux.ServeHTTP(w, r)
 		return
 	}
 

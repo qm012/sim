@@ -300,6 +300,7 @@ func statusHandler(code int, body string) http.Handler {
 	})
 }
 
+//nolint:funlen // Table‑driven test covering 404 / 405 handler
 func TestCustomErrorHandlers(t *testing.T) {
 	notFound := statusHandler(http.StatusNotFound, "nf")
 	notAllowed := statusHandler(http.StatusMethodNotAllowed, "mna")
@@ -345,6 +346,24 @@ func TestCustomErrorHandlers(t *testing.T) {
 			wantCode: http.StatusMethodNotAllowed,
 			wantBody: "Method Not Allowed\n",
 		},
+		{
+			name:       "both set - custom not found",
+			notFound:   notFound,
+			notAllowed: notAllowed,
+			method:     http.MethodGet,
+			target:     "/nope",
+			wantCode:   http.StatusNotFound,
+			wantBody:   "nf",
+		},
+		{
+			name:       "both set - custom method not allowed",
+			notFound:   notFound,
+			notAllowed: notAllowed,
+			method:     http.MethodPost,
+			target:     "/items",
+			wantCode:   http.StatusMethodNotAllowed,
+			wantBody:   "mna",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -363,25 +382,11 @@ func TestCustomErrorHandlers(t *testing.T) {
 	}
 }
 
-func TestCustomErrorHandlersBothSet(t *testing.T) {
-	app := handle404405App(statusHandler(http.StatusNotFound, "nf"), statusHandler(http.StatusMethodNotAllowed, "mna"))
-
-	if rec := serve(t, app, http.MethodGet, "/nope"); rec.Code != http.StatusNotFound || rec.Body.String() != "nf" {
-		t.Errorf("GET /nope = %d %q, want %d %q", rec.Code, rec.Body.String(), http.StatusNotFound, "nf")
-	}
-	rec := serve(t, app, http.MethodPost, "/items")
-	if rec.Code != http.StatusMethodNotAllowed || rec.Body.String() != "mna" {
-		t.Errorf("POST /items = %d %q, want %d %q", rec.Code, rec.Body.String(), http.StatusMethodNotAllowed, "mna")
-	}
-	if allow := rec.Header().Get("Allow"); !strings.Contains(allow, http.MethodGet) {
-		t.Errorf("Allow = %q, want it to contain %q", allow, http.MethodGet)
-	}
-}
-
-// Matched routes and redirects must be unaffected by the custom
-// error handlers.
 func TestCustomErrorHandlersDoNotAffectRouting(t *testing.T) {
-	app := handle404405App(statusHandler(http.StatusNotFound, "nf"), statusHandler(http.StatusMethodNotAllowed, "mna"))
+	app := handle404405App(
+		statusHandler(http.StatusNotFound, "nf"),
+		statusHandler(http.StatusMethodNotAllowed, "mna"),
+	)
 	app.Get("/tree/", markHandlerFunc("tree"))
 
 	expect(t, app, http.MethodGet, "/items", "items")
@@ -393,6 +398,24 @@ func TestCustomErrorHandlersDoNotAffectRouting(t *testing.T) {
 	}
 	if loc := rec.Header().Get("Location"); loc != "/tree/" {
 		t.Errorf("Location = %q, want %q", loc, "/tree/")
+	}
+}
+
+func TestCustomErrorHandlersPreservePathValues(t *testing.T) {
+	app := handle404405App(
+		statusHandler(http.StatusNotFound, "nf"),
+		statusHandler(http.StatusMethodNotAllowed, "mna"),
+	)
+	app.Get("/items/{id}", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "%s:%s", r.Pattern, r.PathValue("id"))
+	})
+
+	rec := serve(t, app, http.MethodGet, "/items/42")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /items/42 = %d, want %d", rec.Code, http.StatusOK)
+	}
+	if want := "GET /items/{id}:42"; rec.Body.String() != want {
+		t.Errorf("body = %q, want %q", rec.Body.String(), want)
 	}
 }
 

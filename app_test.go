@@ -407,7 +407,7 @@ func TestCustomErrorHandlersPreservePathValues(t *testing.T) {
 		statusHandler(http.StatusMethodNotAllowed, "mna"),
 	)
 	app.Get("/items/{id}", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "%s:%s", r.Pattern, r.PathValue("id"))
+		_, _ = fmt.Fprintf(w, "%s:%s", r.Pattern, r.PathValue("id"))
 	})
 
 	rec := serve(t, app, http.MethodGet, "/items/42")

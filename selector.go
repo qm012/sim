@@ -8,26 +8,18 @@ import (
 	"net/http"
 )
 
-// Selector returns a wrapper that conditionally applies the wrapper s
-// to each request:
+// Selector returns a wrapper that conditionally applies s: requests
+// for which match reports true run through s; all others bypass s
+// and go straight to the next handler.
 //
-//   - match(r) == true: the request runs through s;
-//   - match(r) == false: s is skipped entirely.
-//
-// s is applied once, when the returned wrapper is built, not on
-// every request.
+// s wraps the next handler once, at composition time; match is
+// evaluated on every request.
 //
 // The returned wrapper composes with [Chain] and [App.Use]. For example,
 // to log only requests under /api:
 //
 //	app.Use(sim.Selector(logging.Handler, func(r *http.Request) bool {
 //		return strings.HasPrefix(r.URL.Path, "/api")
-//	}))
-//
-// Or to skip logging for health checks:
-//
-//	app.Use(sim.Selector(logging.Handler, func(r *http.Request) bool {
-//		return r.URL.Path != "/healthz"
 //	}))
 //
 // As an element of [Chain], it conditions one wrapper without affecting

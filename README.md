@@ -27,6 +27,9 @@ native performance untouched. Simple, not simplistic.
   context type to learn
 - Wrapper composition with `Chain` and `ChainFunc`
 - Conditional wrapper application with `Selector`
+- Response helpers: `JSON` (with `EscapeForHTML` / `Indented` options),
+  `XML`, `Text`, `Bytes`, `Stream` for chunked streaming, and
+  `Attachment` for file downloads
 - Graceful shutdown with `Run`
 
 **Built-in wrappers**

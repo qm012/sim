@@ -111,6 +111,9 @@ linters:
       - path: response_writer(_test)?\.go
         linters:
           - wrapcheck
+      - path: responder(_test)?\.go
+        linters:
+          - wrapcheck
 formatters:
   enable:
     - gofmt

@@ -98,11 +98,6 @@ func BufferBody(r *http.Request) (*http.Request, error) {
 	return nr, nil
 }
 
-// maxPooledBody caps the scratch capacity bodyPool retains. Larger
-// bodies are not returned to the pool, so one huge request cannot pin a
-// huge backing array between requests.
-const maxPooledBody = 1 << 20 // 1 MiB
-
 var bodyPool = sync.Pool{
 	New: func() any { return new(bytes.Buffer) },
 }

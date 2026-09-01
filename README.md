@@ -31,7 +31,7 @@ native performance untouched. Simple, not simplistic.
   `XML`, `Text`, `Bytes`, `Stream` for chunked streaming, and
   `Attachment` for file downloads
 - Request binding into structs with `query`, `form`, `path`, `header`
-  and JSON/XML tags
+  and `JSON`/`XML` tags
 - Graceful shutdown with `Run`
 
 **Built-in wrappers**

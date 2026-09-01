@@ -30,7 +30,9 @@ var (
 	ErrBindTarget = errors.New("sim: bind target must be a non-nil struct pointer")
 	// ErrUnsupportedKind is returned when a field's kind cannot be bound
 	// from strings.
-	ErrUnsupportedKind = errors.New("unsupported field kind")
+	ErrUnsupportedKind = errors.New("sim: unsupported field kind")
+	// ErrDecodeNil is returned when a decoder returns a nil value without an error.
+	ErrDecodeNil = errors.New("sim: decoder returned nil value")
 )
 
 // Validator defines the interface for validating a decoded request payload.
@@ -41,6 +43,8 @@ type Validator interface {
 }
 
 // Decoder decodes an HTTP request into a *T.
+// A decoder must return a non-nil value when the error is nil;
+// otherwise, Bind returns ErrDecodeNil.
 // BindJSON, BindXML, BindQuery, BindForm, BindPath and
 // BindHeader use the built-in decoders; custom formats plug in through
 // this interface.
@@ -58,22 +62,81 @@ func (f DecoderFunc[T]) Decode(r *http.Request) (*T, error) {
 
 // Bind decodes the request with src and returns the decoded value.
 // If the value implements Validator, Bind validates it against the
-// request context before returning; a nil value skips validation.
+// request context before returning. It returns ErrDecodeNil if the
+// decoder returns a nil value without an error.
 func Bind[T any](r *http.Request, src Decoder[T]) (*T, error) {
 	v, err := src.Decode(r)
 	if err != nil {
 		return nil, err
 	}
 	if v == nil {
-		//nolint:nilnil // a decoder may return no value with no error; Bind forwards the nil and skips validation
-		return nil, nil
+		return nil, ErrDecodeNil
 	}
 	if vd, ok := any(v).(Validator); ok {
-		if err = vd.Validate(r.Context()); err != nil {
+		if err := vd.Validate(r.Context()); err != nil {
 			return nil, err
 		}
 	}
 	return v, nil
+}
+
+// BindJSON decodes the request body as JSON into a *T and validates it
+// when T implements Validator. Only the first JSON value is decoded;
+// trailing content is not rejected.
+func BindJSON[T any](r *http.Request, opts ...JSONDecoderOption) (*T, error) {
+	return Bind(r, jsonSource[T](opts...))
+}
+
+// BindXML decodes the request body as XML into a *T and validates it
+// when T implements Validator.
+func BindXML[T any](r *http.Request) (*T, error) {
+	return Bind(r, xmlSource[T]())
+}
+
+// BindQuery binds the URL query into a *T using `query` struct tags and
+// validates it when T implements Validator. A malformed query string is
+// rejected instead of silently dropping the affected keys. T may also be
+// map[string]string or map[string][]string, which receive the query
+// values directly. The Binding section of the package documentation
+// describes the shared struct-tag rules.
+func BindQuery[T any](r *http.Request) (*T, error) {
+	return Bind(r, querySource[T]())
+}
+
+// BindForm binds form values — the URL query plus the request body form —
+// into a *T using `form` struct tags and validates it when T implements
+// Validator. T may also be map[string]string or map[string][]string,
+// which receive the form values directly. The Binding section of the
+// package documentation describes the shared struct-tag rules.
+//
+// Both urlencoded and multipart bodies are parsed with a fixed 32 MiB
+// memory cap; multipart file parts bind into *multipart.FileHeader or
+// []*multipart.FileHeader fields. A body buffered with BufferBody is
+// parsed from the cached copy. Parsing populates r.Form, r.PostForm
+// and r.MultipartForm in place.
+// To reject oversized uploads, limit the body with http.MaxBytesHandler —
+// globally in a wrapper or per handler — before the request reaches
+// BindForm.
+func BindForm[T any](r *http.Request) (*T, error) {
+	return Bind(r, formSource[T]())
+}
+
+// BindPath binds path values into a *T using `path` struct tags and
+// validates it when T implements Validator. A wildcard that is missing
+// or that matched an empty value counts as absent. Map targets are not
+// supported, because path wildcards cannot be enumerated. The Binding
+// section of the package documentation describes the shared struct-tag
+// rules.
+func BindPath[T any](r *http.Request) (*T, error) {
+	return Bind(r, pathSource[T]())
+}
+
+// BindHeader binds request headers into a *T using `header` struct tags
+// and validates it when T implements Validator. Header names are matched
+// case-insensitively; map targets are not supported. The Binding section
+// of the package documentation describes the shared struct-tag rules.
+func BindHeader[T any](r *http.Request) (*T, error) {
+	return Bind(r, headerSource[T]())
 }
 
 type ctxBodyKey struct{}
@@ -282,65 +345,6 @@ func headerSource[T any]() Decoder[T] {
 		}
 		return &t, nil
 	})
-}
-
-// BindJSON decodes the request body as JSON into a *T and validates it
-// when T implements Validator. Only the first JSON value is decoded;
-// trailing content is not rejected.
-func BindJSON[T any](r *http.Request, opts ...JSONDecoderOption) (*T, error) {
-	return Bind(r, jsonSource[T](opts...))
-}
-
-// BindXML decodes the request body as XML into a *T and validates it
-// when T implements Validator.
-func BindXML[T any](r *http.Request) (*T, error) {
-	return Bind(r, xmlSource[T]())
-}
-
-// BindQuery binds the URL query into a *T using `query` struct tags and
-// validates it when T implements Validator. A malformed query string is
-// rejected instead of silently dropping the affected keys. T may also be
-// map[string]string or map[string][]string, which receive the query
-// values directly. The Binding section of the package documentation
-// describes the shared struct-tag rules.
-func BindQuery[T any](r *http.Request) (*T, error) {
-	return Bind(r, querySource[T]())
-}
-
-// BindForm binds form values — the URL query plus the request body form —
-// into a *T using `form` struct tags and validates it when T implements
-// Validator. T may also be map[string]string or map[string][]string,
-// which receive the form values directly. The Binding section of the
-// package documentation describes the shared struct-tag rules.
-//
-// Both urlencoded and multipart bodies are parsed with a fixed 32 MiB
-// memory cap; multipart file parts bind into *multipart.FileHeader or
-// []*multipart.FileHeader fields. A body buffered with BufferBody is
-// parsed from the cached copy. Parsing populates r.Form, r.PostForm
-// and r.MultipartForm in place.
-// To reject oversized uploads, limit the body with http.MaxBytesHandler —
-// globally in a wrapper or per handler — before the request reaches
-// BindForm.
-func BindForm[T any](r *http.Request) (*T, error) {
-	return Bind(r, formSource[T]())
-}
-
-// BindPath binds path values into a *T using `path` struct tags and
-// validates it when T implements Validator. A wildcard that is missing
-// or that matched an empty value counts as absent. Map targets are not
-// supported, because path wildcards cannot be enumerated. The Binding
-// section of the package documentation describes the shared struct-tag
-// rules.
-func BindPath[T any](r *http.Request) (*T, error) {
-	return Bind(r, pathSource[T]())
-}
-
-// BindHeader binds request headers into a *T using `header` struct tags
-// and validates it when T implements Validator. Header names are matched
-// case-insensitively; map targets are not supported. The Binding section
-// of the package documentation describes the shared struct-tag rules.
-func BindHeader[T any](r *http.Request) (*T, error) {
-	return Bind(r, headerSource[T]())
 }
 
 // bindValues binds values into dst using the given struct tag: map targets

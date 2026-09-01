@@ -486,7 +486,7 @@ func TestBindNilValue(t *testing.T) {
 		return nil, nil
 	})
 	got, err := sim.Bind(queryRequest(t, ""), src)
-	if err != nil || got != nil {
+	if !errors.Is(err, sim.ErrDecodeNil) || got != nil {
 		t.Errorf("Bind() = %v, %v, want nil, nil", got, err)
 	}
 }

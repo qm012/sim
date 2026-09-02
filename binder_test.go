@@ -65,7 +65,6 @@ type queryReq struct {
 }
 
 func TestBindQuery(t *testing.T) {
-	n := func(i int) *int { return &i }
 	start := time.Date(2026, 5, 1, 10, 0, 0, 0, time.UTC)
 	tag1 := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	tag2 := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
@@ -76,17 +75,17 @@ func TestBindQuery(t *testing.T) {
 		url  string
 		want queryReq
 	}{
-		{"untagged field", "Name=alice", queryReq{Name: "alice", Page: n(1)}},
+		{"untagged field", "Name=alice", queryReq{Name: "alice", Page: new(1)}},
 		{
 			"scalar kinds", "ok=true&count=7&rate=1.5&page=3",
-			queryReq{OK: true, Count: 7, Rate: 1.5, Page: n(3)},
+			queryReq{OK: true, Count: 7, Rate: 1.5, Page: new(3)},
 		},
-		{"int slice", "id=1&id=2&id=3", queryReq{Page: n(1), IDs: []int{1, 2, 3}}},
-		{"pointer slice", "pid=1&pid=2", queryReq{Page: n(1), PtrIDs: []*int{n(1), n(2)}}},
+		{"int slice", "id=1&id=2&id=3", queryReq{Page: new(1), IDs: []int{1, 2, 3}}},
+		{"pointer slice", "pid=1&pid=2", queryReq{Page: new(1), PtrIDs: []*int{new(1), new(2)}}},
 		{
 			"text unmarshalers", unmarshalURL,
 			queryReq{
-				Page:    n(1),
+				Page:    new(1),
 				Start:   start,
 				Addr:    netip.MustParseAddr("192.168.1.1"),
 				Timeout: 90 * time.Minute,
@@ -94,19 +93,19 @@ func TestBindQuery(t *testing.T) {
 		},
 		// A byte slice that decodes itself parses the whole value
 		// instead of taking its raw bytes.
-		{"self-decoding byte slice", "host=192.168.1.1", queryReq{Page: n(1), Host: net.ParseIP("192.168.1.1")}},
-		{"embedded self-decoding type", "Time=2026-05-01T10:00:00Z", queryReq{Page: n(1), Time: start}},
-		{"unmarshaler slice", tagsURL, queryReq{Page: n(1), Tags: []time.Time{tag1, tag2}}},
-		{"byte slice", "data=hello", queryReq{Page: n(1), Data: []byte("hello")}},
-		{"defaults on missing keys", "", queryReq{Page: n(1)}},
-		{"defaults on empty values", "page=", queryReq{Page: n(1)}},
-		{"defaults on repeated empty values", "page=&page=", queryReq{Page: n(1)}},
+		{"self-decoding byte slice", "host=192.168.1.1", queryReq{Page: new(1), Host: net.ParseIP("192.168.1.1")}},
+		{"embedded self-decoding type", "Time=2026-05-01T10:00:00Z", queryReq{Page: new(1), Time: start}},
+		{"unmarshaler slice", tagsURL, queryReq{Page: new(1), Tags: []time.Time{tag1, tag2}}},
+		{"byte slice", "data=hello", queryReq{Page: new(1), Data: []byte("hello")}},
+		{"defaults on missing keys", "", queryReq{Page: new(1)}},
+		{"defaults on empty values", "page=", queryReq{Page: new(1)}},
+		{"defaults on repeated empty values", "page=&page=", queryReq{Page: new(1)}},
 		// Scalars take the last value, which here beats the default.
-		{"last value wins over empty", "page=&page=3", queryReq{Page: n(3)}},
-		{"embedded pointer allocated", "embeddedPage=3", queryReq{Page: n(1), EmbedPage: &EmbedPage{Page: 3}}},
-		{"embedded pointer stays nil", "ok=true", queryReq{OK: true, Page: n(1)}},
+		{"last value wins over empty", "page=&page=3", queryReq{Page: new(3)}},
+		{"embedded pointer allocated", "embeddedPage=3", queryReq{Page: new(1), EmbedPage: &EmbedPage{Page: 3}}},
+		{"embedded pointer stays nil", "ok=true", queryReq{OK: true, Page: new(1)}},
 		// A "-" tag skips the field entirely.
-		{"dash tag skipped", "Secret=x&Name=alice", queryReq{Name: "alice", Page: n(1)}},
+		{"dash tag skipped", "Secret=x&Name=alice", queryReq{Name: "alice", Page: new(1)}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -125,7 +124,7 @@ func TestBindQueryDashTag(t *testing.T) {
 	got, err := sim.BindQuery[struct {
 		EmbedPage `query:"-"`
 		Name      string `query:"name"`
-	}](queryRequest(t, "embeddedPage=3&name=alice"))
+	}](queryRequest(t, "EmbedPage=3&name=alice"))
 	if err != nil {
 		t.Fatalf("BindQuery() error = %v", err)
 	}
@@ -349,6 +348,7 @@ type formReq struct {
 	Avatar *multipart.FileHeader   `form:"avatar"`
 	Docs   []*multipart.FileHeader `form:"docs"`
 }
+
 type formFile struct {
 	field, name string
 }

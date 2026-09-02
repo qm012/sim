@@ -124,7 +124,7 @@ func TestBindQueryDashTag(t *testing.T) {
 	got, err := sim.BindQuery[struct {
 		EmbedPage `query:"-"`
 		Name      string `query:"name"`
-	}](queryRequest(t, "EmbedPage=3&name=alice"))
+	}](queryRequest(t, "embeddedPage=3&name=alice"))
 	if err != nil {
 		t.Fatalf("BindQuery() error = %v", err)
 	}

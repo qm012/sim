@@ -190,11 +190,13 @@ func getUser(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	_ = sim.Text(w, http.StatusOK, "user "+p.ID)
+	// In a real app, p.ID would drive a database lookup.
+	_ = sim.JSON(w, http.StatusOK, user{ID: p.ID, Name: "alice", Age: 30})
 }
 
-// user is the payload createUser decodes from the request body.
+// user is the payload the API exchanges with its clients.
 type user struct {
+	ID   string `json:"id,omitempty"`
 	Name string `json:"name"`
 	Age  int    `json:"age"`
 }
@@ -209,7 +211,7 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func updateUser(w http.ResponseWriter, r *http.Request) {
-	// BindPath fills a struct from URL wildcards.
+	// A PUT carries a path parameter and a body; bind each in turn.
 	p, err := sim.BindPath[struct {
 		ID string `path:"id"`
 	}](r)
@@ -217,7 +219,14 @@ func updateUser(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	_ = sim.Text(w, http.StatusOK, "user "+p.ID+" updated")
+	u, err := sim.BindJSON[user](r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	u.ID = p.ID
+	// In a real app, the updated user would be stored here.
+	_ = sim.JSON(w, http.StatusOK, u)
 }
 
 func deleteUser(w http.ResponseWriter, _ *http.Request) {
@@ -225,7 +234,7 @@ func deleteUser(w http.ResponseWriter, _ *http.Request) {
 }
 
 func adminPanel(w http.ResponseWriter, _ *http.Request) {
-	_ = sim.Text(w, http.StatusOK, "admin\n")
+	_ = sim.Text(w, http.StatusOK, "admin")
 }
 ```
 
@@ -240,16 +249,22 @@ http://localhost:8080/api/users for the user list. The endpoints return JSON. Tr
 
 ```bash
 curl 'localhost:8080/api/users?page=2'
+curl localhost:8080/api/users/1
 curl -X POST localhost:8080/api/users \
   -H 'Content-Type: application/json' \
   -d '{"name":"alice","age":30}'
+curl -X PUT localhost:8080/api/users/1 \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"alice","age":31}'
 ```
 
 Responses:
 
 ```text
 {"page":2,"users":[{"name":"alice","age":30},{"name":"bob","age":25}]}
+{"id":"1","name":"alice","age":30}
 {"name":"alice","age":30}
+{"id":"1","name":"alice","age":31}
 ```
 
 ## Contributing

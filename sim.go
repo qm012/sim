@@ -12,7 +12,7 @@
 //
 //	import (
 //		"context"
-//		"log/slog"
+//		"log"
 //		"net/http"
 //
 //		"github.com/qm012/sim"
@@ -22,10 +22,10 @@
 //		app := sim.Default()
 //
 //		app.Get("/", func(w http.ResponseWriter, _ *http.Request) {
-//			w.Write([]byte("root."))
+//			_ = sim.Text(w, http.StatusOK, "root.")
 //		})
 //		app.Get("/users/{id}", func(w http.ResponseWriter, r *http.Request) {
-//			w.Write([]byte("user " + r.PathValue("id")))
+//			_ = sim.Text(w, http.StatusOK, "user "+r.PathValue("id"))
 //		})
 //		app.Group("/api", func(r sim.Router) {
 //			r.Post("/users", func(w http.ResponseWriter, _ *http.Request) {
@@ -33,8 +33,8 @@
 //			})
 //		})
 //
-//		if err := app.Run(context.Background(), ":3333"); err != nil {
-//			slog.Error("server failed", "err", err)
+//		if err := app.Run(context.Background(), ":8080"); err != nil {
+//			log.Fatal(err)
 //		}
 //	}
 //
@@ -107,6 +107,25 @@
 // map[string][]string as the target type; the other binders require a
 // struct.
 //
+// # Responding
+//
+// [JSON], [XML], [Text], [Bytes], [Stream] and [Attachment] write a
+// complete response — status code, content type and body — in a single
+// call:
+//
+//   - [JSON] encodes data as JSON. [EscapeForHTML] and [Indented]
+//     control escaping and formatting.
+//   - [XML] encodes data as XML, prepending the standard XML header.
+//   - [Text] writes a plain-text string.
+//   - [Bytes] writes raw bytes with a caller-supplied content type.
+//   - [Stream] copies an [io.Reader] in chunks, suiting large or
+//     in-progress bodies such as file downloads or proxied responses.
+//   - [Attachment] wraps [Stream] with a Content-Disposition header
+//     that prompts browsers to save the body as a file.
+//
+// For static files that need Range requests or caching, prefer
+// [http.ServeFile] or [http.ServeFileFS].
+//
 // See the documentation of [App] for the full routing API.
 package sim
 
@@ -145,8 +164,9 @@ type Router interface {
 	HandleFunc(pattern string, handler http.HandlerFunc)
 
 	// Any Get Post Delete Patch Put Options Head Connect and Trace
-	// register handlerFunc on the given pattern for their respective HTTP
-	// methods; Any matches all methods.
+	// register handlerFunc on the given path for their respective HTTP
+	// methods; Any matches all methods. Unlike Handle and HandleFunc, the
+	// path takes no method prefix — the helper supplies it.
 	Any(path string, handlerFunc http.HandlerFunc)
 	Get(path string, handlerFunc http.HandlerFunc)
 	Post(path string, handlerFunc http.HandlerFunc)

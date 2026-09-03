@@ -89,12 +89,14 @@
 //   - Anonymous struct fields recurse with the same tag; a nil embedded
 //     pointer is allocated only when a field inside it binds, which
 //     includes binding from default=. Named struct fields do not
-//     recurse.
+//     recurse. An anonymous self-decoding field binds as a single
+//     value instead of recursing.
 //   - Bindable types are strings, bools, ints, uints, floats,
 //     [time.Duration], any type whose pointer implements
-//     [encoding.TextUnmarshaler], slices of those, []byte, and pointers
-//     to any of them. A self-decoding type binds as a single value even
-//     when it is a slice of bytes, as net.IP is.
+//     [encoding.TextUnmarshaler], slices of those or of pointers to
+//     them (as []*int or []*string), []byte, and pointers to any of
+//     them. A self-decoding type binds as a single value even when it
+//     is a slice of bytes, as net.IP is.
 //   - Scalar and []byte fields take the last value of a repeated key;
 //     slice fields take every value.
 //   - The tag option default=value applies when the key is absent or

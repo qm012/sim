@@ -16,7 +16,7 @@ native performance untouched. Simple, not simplistic.
 
 ## Features
 
-**Core**
+### Core
 
 - Zero dependencies — only the Go standard library
 - Method-based routing: `Get`, `Post`, `Put`, `Delete`, `Patch`,
@@ -27,14 +27,13 @@ native performance untouched. Simple, not simplistic.
   context type to learn
 - Wrapper composition with `Chain` and `ChainFunc`
 - Conditional wrapper application with `Selector`
-- Response helpers: `JSON` (with `EscapeForHTML` / `Indented` options),
-  `XML`, `Text`, `Bytes`, `Stream` for chunked streaming, and
-  `Attachment` for file downloads
-- Request binding into structs with `query`, `form`, `path`, `header`
-  and `JSON`/`XML` tags
+- [Request binding](#request-binding) into structs from the query, form,
+  path, headers and body
+- [Response helpers](#response-helpers) that write a full response in one
+  call
 - Graceful shutdown with `Run`
 
-**Built-in wrappers**
+### Built-in wrappers
 
 | Wrapper              | What it does                                                                            |
 |----------------------|-----------------------------------------------------------------------------------------|
@@ -44,7 +43,7 @@ native performance untouched. Simple, not simplistic.
 
 `Default` bundles all three wrappers, ready to use with no configuration.
 
-**Request binding**
+### Request binding
 
 - Bind requests into your own structs: `BindJSON`, `BindXML`,
   `BindQuery`, `BindForm`, `BindPath` and `BindHeader`
@@ -56,13 +55,14 @@ native performance untouched. Simple, not simplistic.
 See the [package documentation](https://pkg.go.dev/github.com/qm012/sim)
 for the full struct-tag rules.
 
-**Response helpers**
+### Response helpers
 
 - Write complete responses in one call: `JSON`, `XML`, `Text`, `Bytes`,
   `Stream` and `Attachment`
 - JSON options: `EscapeForHTML` for safe HTML embedding, `Indented`
   for readable output
-- `Stream` for chunked large bodies, `Attachment` for file downloads
+- `Stream` for large or in-progress bodies without loading them into
+  memory, `Attachment` for file downloads
 
 ## Installation
 
@@ -172,10 +172,13 @@ func listUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// In a real app, q.Page would drive database pagination.
-	_ = sim.JSON(w, http.StatusOK, []user{
+	_ = sim.JSON(w, http.StatusOK, struct {
+		Page  int    `json:"page"`
+		Users []user `json:"users"`
+	}{q.Page, []user{
 		{Name: "alice", Age: 30},
 		{Name: "bob", Age: 25},
-	})
+	}})
 }
 
 func getUser(w http.ResponseWriter, r *http.Request) {
@@ -245,7 +248,7 @@ curl -X POST localhost:8080/api/users \
 Responses:
 
 ```text
-[{"name":"alice","age":30},{"name":"bob","age":25}]
+{"page":2,"users":[{"name":"alice","age":30},{"name":"bob","age":25}]}
 {"name":"alice","age":30}
 ```
 

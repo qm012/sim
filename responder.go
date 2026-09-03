@@ -34,6 +34,11 @@ func Indented(v bool) JSONEncoderOption {
 }
 
 // JSON writes data as JSON with the given status code.
+//
+// The status code is sent before data is encoded, so a value that cannot
+// be encoded leaves the client with statusCode and an empty body. Such an
+// error can only be logged: the response is already committed, and a later
+// WriteHeader is ignored.
 func JSON(w http.ResponseWriter, statusCode int, data any, opts ...JSONEncoderOption) error {
 	o := jsonEncoderOptions{escapeHTML: true}
 	for _, opt := range opts {
@@ -52,6 +57,10 @@ func JSON(w http.ResponseWriter, statusCode int, data any, opts ...JSONEncoderOp
 }
 
 // XML writes data as XML with the given status code.
+//
+// data is marshaled before the status code is sent, so an encoding error
+// leaves the response untouched and the handler can still write an error
+// response.
 func XML(w http.ResponseWriter, statusCode int, data any) error {
 	b, err := xml.Marshal(data)
 	if err != nil {

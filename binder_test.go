@@ -202,7 +202,6 @@ type bodyReq struct {
 }
 
 func TestBindBody(t *testing.T) {
-	bindJSON := func(r *http.Request) (*bodyReq, error) { return sim.BindJSON[bodyReq](r) }
 	tests := []struct {
 		name    string
 		body    string
@@ -213,13 +212,13 @@ func TestBindBody(t *testing.T) {
 		{
 			name: "json decodes",
 			body: `{"name":"alice","age":30}`,
-			bind: bindJSON,
+			bind: func(r *http.Request) (*bodyReq, error) { return sim.BindJSON[bodyReq](r) },
 			want: bodyReq{Name: "alice", Age: 30},
 		},
 		{
 			name:    "json rejects malformed body",
 			body:    `{"name":`,
-			bind:    bindJSON,
+			bind:    func(r *http.Request) (*bodyReq, error) { return sim.BindJSON[bodyReq](r) },
 			wantErr: true,
 		},
 		{

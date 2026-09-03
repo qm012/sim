@@ -12,7 +12,7 @@
 //
 //	import (
 //		"context"
-//		"log/slog"
+//		"log"
 //		"net/http"
 //
 //		"github.com/qm012/sim"
@@ -22,10 +22,10 @@
 //		app := sim.Default()
 //
 //		app.Get("/", func(w http.ResponseWriter, _ *http.Request) {
-//			w.Write([]byte("root."))
+//			_ = sim.Text(w, http.StatusOK, "root.")
 //		})
 //		app.Get("/users/{id}", func(w http.ResponseWriter, r *http.Request) {
-//			w.Write([]byte("user " + r.PathValue("id")))
+//			_ = sim.Text(w, http.StatusOK, "user "+r.PathValue("id"))
 //		})
 //		app.Group("/api", func(r sim.Router) {
 //			r.Post("/users", func(w http.ResponseWriter, _ *http.Request) {
@@ -33,8 +33,8 @@
 //			})
 //		})
 //
-//		if err := app.Run(context.Background(), ":3333"); err != nil {
-//			slog.Error("server failed", "err", err)
+//		if err := app.Run(context.Background(), ":8080"); err != nil {
+//			log.Fatal(err)
 //		}
 //	}
 //
@@ -164,8 +164,9 @@ type Router interface {
 	HandleFunc(pattern string, handler http.HandlerFunc)
 
 	// Any Get Post Delete Patch Put Options Head Connect and Trace
-	// register handlerFunc on the given pattern for their respective HTTP
-	// methods; Any matches all methods.
+	// register handlerFunc on the given path for their respective HTTP
+	// methods; Any matches all methods. Unlike Handle and HandleFunc, the
+	// path takes no method prefix — the helper supplies it.
 	Any(path string, handlerFunc http.HandlerFunc)
 	Get(path string, handlerFunc http.HandlerFunc)
 	Post(path string, handlerFunc http.HandlerFunc)

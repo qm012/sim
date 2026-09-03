@@ -71,6 +71,42 @@
 // as [App.Get]. [Default] returns an App with the standard wrappers
 // already registered.
 //
+// # Binding
+//
+// [BindJSON] and [BindXML] decode the request body, while [BindQuery],
+// [BindForm], [BindPath] and [BindHeader] fill a value from request
+// strings; [Bind] does the same with a custom [Decoder]. Every helper
+// validates the decoded value when it implements [Validator], and
+// [BufferBody] makes a request body readable more than once.
+//
+// The string binders share one set of rules, keyed by the struct tag
+// named after the binder — "query", "form", "path" or "header":
+//
+//   - The bind key is the tag name, or the field name when the tag
+//     carries none. A tag name of "-" skips the field, and unexported
+//     fields never bind, including anonymous fields whose type name is
+//     unexported.
+//   - Anonymous struct fields recurse with the same tag; a nil embedded
+//     pointer is allocated only when a field inside it binds, which
+//     includes binding from default=. Named struct fields do not
+//     recurse. An anonymous self-decoding field binds as a single
+//     value instead of recursing.
+//   - Bindable types are strings, bools, ints, uints, floats,
+//     [time.Duration], any type whose pointer implements
+//     [encoding.TextUnmarshaler], slices of those or of pointers to
+//     them (as []*int or []*string), []byte, and pointers to any of
+//     them. A self-decoding type binds as a single value even when it
+//     is a slice of bytes, as net.IP is.
+//   - Scalar and []byte fields take the last value of a repeated key;
+//     slice fields take every value.
+//   - The tag option default=value applies when the key is absent or
+//     all of its values are empty. The value runs to the next option,
+//     so it cannot contain a comma.
+//
+// [BindQuery] and [BindForm] also accept map[string]string and
+// map[string][]string as the target type; the other binders require a
+// struct.
+//
 // See the documentation of [App] for the full routing API.
 package sim
 

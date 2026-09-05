@@ -36,6 +36,12 @@ type App struct {
 	// first, and its response is what the caller ultimately sees —
 	// the same composition as [Chain].
 	ss []func(http.Handler) http.Handler
+
+	// Handlers served when a request matches no registered pattern
+	// (404) or matches a pattern but not its method (405); nil keeps
+	// the mux defaults. See: https://github.com/golang/go/issues/65648
+	notFoundHandler         http.Handler
+	methodNotAllowedHandler http.Handler
 }
 
 var (
@@ -80,6 +86,20 @@ func Default() *App {
 		new(Recovery).Handler,
 	)
 	return app
+}
+
+// SetNotFoundHandler sets the handler served when a request matches
+// no registered pattern. When unset, the mux responds with 404 Not
+// Found.
+func (a *App) SetNotFoundHandler(h http.Handler) {
+	a.notFoundHandler = h
+}
+
+// SetMethodNotAllowedHandler sets the handler served when a request
+// path matches a registered pattern but its method does not. When
+// unset, the mux responds with 405 Method Not Allowed.
+func (a *App) SetMethodNotAllowedHandler(h http.Handler) {
+	a.methodNotAllowedHandler = h
 }
 
 // Use registers the given wrappers and applies them to every handler
@@ -170,9 +190,11 @@ func (a *App) Group(relativePath string, fn func(r Router)) {
 		return
 	}
 	app := &App{
-		basePath: path.Join(cmp.Or(a.basePath, "/"), relativePath),
-		mux:      a.mux,
-		ss:       slices.Clone(a.ss),
+		basePath:                path.Join(cmp.Or(a.basePath, "/"), relativePath),
+		mux:                     a.mux,
+		ss:                      slices.Clone(a.ss),
+		notFoundHandler:         a.notFoundHandler,
+		methodNotAllowedHandler: a.methodNotAllowedHandler,
 	}
 	fn(app)
 }
@@ -209,8 +231,71 @@ func parsePattern(s string) (string, string) {
 	return method, rest
 }
 
+// ServeHTTP dispatches r to the handler registered for the matching
+// pattern. When nothing matches, it serves the handlers set by
+// [App.SetNotFoundHandler] and [App.SetMethodNotAllowedHandler],
+// falling back to the mux defaults when unset.
 func (a *App) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	a.mux.ServeHTTP(w, r)
+	// Fast path: without custom error handlers the mux serves its
+	// default 404 and 405 responses directly.
+	if a.notFoundHandler == nil && a.methodNotAllowedHandler == nil {
+		a.mux.ServeHTTP(w, r)
+		return
+	}
+
+	h, pattern := a.mux.Handler(r)
+	if pattern != "" {
+		// Re-dispatch through ServeHTTP instead of serving h: Handler
+		// does not populate r.pat/r.matches, so r.Pattern and
+		// r.PathValue would be broken for wildcard patterns.
+		a.mux.ServeHTTP(w, r)
+		return
+	}
+
+	// No pattern matched: h is either the mux's 404 handler or its
+	// 405 handler (path matched, method did not). Serve it into a
+	// recorder to tell the two cases apart.
+	rec := &statusRecorder{header: make(http.Header)}
+	h.ServeHTTP(rec, r)
+
+	switch rec.code {
+	case http.StatusNotFound:
+		if a.notFoundHandler != nil {
+			a.notFoundHandler.ServeHTTP(w, r)
+			return
+		}
+	case http.StatusMethodNotAllowed:
+		if a.methodNotAllowedHandler != nil {
+			// RFC 9110 mandates Allow on 405 responses; carry over the
+			// methods the mux computed. The custom handler may still
+			// override or delete it.
+			w.Header().Set("Allow", rec.header.Get("Allow"))
+			a.methodNotAllowedHandler.ServeHTTP(w, r)
+			return
+		}
+	}
+	// Only the other custom handler is set; replay the mux's default
+	// response, including Allow for 405.
+	h.ServeHTTP(w, r)
+}
+
+// statusRecorder is an [http.ResponseWriter] that discards the body
+// and records only the status code and header.
+type statusRecorder struct {
+	header http.Header
+	code   int
+}
+
+var _ http.ResponseWriter = (*statusRecorder)(nil)
+
+func (s *statusRecorder) Header() http.Header { return s.header }
+
+func (s *statusRecorder) Write(b []byte) (int, error) { return len(b), nil }
+
+func (s *statusRecorder) WriteHeader(code int) {
+	if s.code == 0 {
+		s.code = code
+	}
 }
 
 // shutdownTimeout bounds how long a graceful shutdown may wait for

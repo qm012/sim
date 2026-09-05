@@ -51,6 +51,8 @@ func JSON(w http.ResponseWriter, statusCode int, data any, opts ...JSONEncoderOp
 	return enc.Encode(data)
 }
 
+var xmlHeaderBytes = []byte(xml.Header)
+
 // XML writes data as XML with the given status code.
 func XML(w http.ResponseWriter, statusCode int, data any) error {
 	b, err := xml.Marshal(data)
@@ -59,7 +61,7 @@ func XML(w http.ResponseWriter, statusCode int, data any) error {
 	}
 	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
 	w.WriteHeader(statusCode)
-	if _, err = w.Write([]byte(xml.Header)); err != nil {
+	if _, err = w.Write(xmlHeaderBytes); err != nil {
 		return err
 	}
 	_, err = w.Write(b)

@@ -180,7 +180,7 @@ func listUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 func getUser(w http.ResponseWriter, r *http.Request) {
-	// BindPath fills a struct from URL wildcards.
+  // BindPath fills a struct from path values.
 	p, err := sim.BindPath[struct {
 		ID string `path:"id"`
 	}](r)
@@ -241,26 +241,25 @@ go run main.go
 ```
 
 Open http://localhost:8080/ to see "welcome", and
-http://localhost:8080/api/users for the user list. The endpoints return JSON. Try them:
+http://localhost:8080/api/users for the user list. The endpoints return
+JSON. Try them:
 
 ```bash
 curl 'localhost:8080/api/users?page=2'
+# {"page":2,"users":[{"name":"alice","age":30},{"name":"bob","age":25}]}
+
 curl localhost:8080/api/users/1
+# {"id":"1","name":"alice","age":30}
+
 curl -X POST localhost:8080/api/users \
   -H 'Content-Type: application/json' \
   -d '{"name":"alice","age":30}'
+# {"name":"alice","age":30}
+
 curl -X PUT localhost:8080/api/users/1 \
   -H 'Content-Type: application/json' \
   -d '{"name":"alice","age":31}'
-```
-
-Responses:
-
-```text
-{"page":2,"users":[{"name":"alice","age":30},{"name":"bob","age":25}]}
-{"id":"1","name":"alice","age":30}
-{"name":"alice","age":30}
-{"id":"1","name":"alice","age":31}
+# {"id":"1","name":"alice","age":31}
 ```
 
 ## Contributing

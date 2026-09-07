@@ -120,7 +120,6 @@
 //   - [Stream] copies an [io.Reader] to the response, suitable for large
 //     or streaming bodies such as proxied responses.
 //   - [Attachment] streams a body with a Content-Disposition header for download.
-//     that prompts browsers to save the body as a file.
 //
 // For static files that need Range requests or caching, prefer
 // [http.ServeFile] or [http.ServeFileFS].
@@ -162,10 +161,9 @@ type Router interface {
 	// with the same behavior as [http.ServeMux.HandleFunc] and [http.HandleFunc].
 	HandleFunc(pattern string, handler http.HandlerFunc)
 
-	// Any Get, Post, Delete, Patch, Put, Options, Head, Connect, and Trace
-	// register handlerFunc for their respective HTTP methods.
-	// Any matches all methods. Unlike Handle and HandleFunc, these helpers
-	// take a path without a method prefix.
+	// Any matches all HTTP methods. Get, Post, Delete, Patch, Put, Options,
+	// Head, Connect, and Trace register handlerFunc for their respective HTTP methods.
+	// Unlike Handle and HandleFunc, these helpers take a path without a method prefix.
 	Any(path string, handlerFunc http.HandlerFunc)
 	Get(path string, handlerFunc http.HandlerFunc)
 	Post(path string, handlerFunc http.HandlerFunc)

@@ -45,10 +45,10 @@ native performance untouched. Simple, not simplistic.
 
 ### Request binding
 
-- Bind requests into your own structs: `BindJSON`, `BindXML`,
-  `BindQuery`, `BindForm`, `BindPath` and `BindHeader`
+- Bind incoming request data into your own structs from JSON, XML, query,
+  form, path, and header values.
 - Struct tags with `default=` values, embedded structs, multipart file
-  uploads and map targets
+  uploads, and map targets
 - Validation via `Validator`, custom formats via `Decoder`
 - Read the request body more than once with `BufferBody`
 

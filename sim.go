@@ -162,8 +162,9 @@ type Router interface {
 	HandleFunc(pattern string, handler http.HandlerFunc)
 
 	// Any matches all HTTP methods. Get, Post, Delete, Patch, Put, Options,
-	// Head, Connect, and Trace register handlerFunc for their respective HTTP methods.
-	// Unlike Handle and HandleFunc, these helpers take a path without a method prefix.
+	// Head, Connect, and Trace register handlerFunc for their respective HTTP
+	// methods. Unlike Handle and HandleFunc, these helpers take a path without
+	// a method prefix.
 	Any(path string, handlerFunc http.HandlerFunc)
 	Get(path string, handlerFunc http.HandlerFunc)
 	Post(path string, handlerFunc http.HandlerFunc)

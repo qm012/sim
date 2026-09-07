@@ -57,8 +57,7 @@ for the full struct-tag rules.
 
 ### Response helpers
 
-- Write complete responses in one call: `JSON`, `XML`, `Text`, `Bytes`,
-  `Stream` and `Attachment`
+- Write JSON, XML, text, byte, streaming, and attachment responses
 - JSON options: `EscapeForHTML` for safe HTML embedding, `Indented`
   for readable output
 - `Stream` for large or in-progress bodies without loading them into

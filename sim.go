@@ -109,18 +109,17 @@
 //
 // # Responding
 //
-// [JSON], [XML], [Text], [Bytes], [Stream] and [Attachment] write a
-// complete response — status code, content type and body — in a single
-// call:
+// [JSON], [XML], [Text], [Bytes], [Stream] and [Attachment] write
+// responses with a single call:
 //
 //   - [JSON] encodes data as JSON. [EscapeForHTML] and [Indented]
 //     control escaping and formatting.
 //   - [XML] encodes data as XML, prepending the standard XML header.
 //   - [Text] writes a plain-text string.
 //   - [Bytes] writes raw bytes with a caller-supplied content type.
-//   - [Stream] copies an [io.Reader] in chunks, suiting large or
-//     in-progress bodies such as file downloads or proxied responses.
-//   - [Attachment] wraps [Stream] with a Content-Disposition header
+//   - [Stream] copies an [io.Reader] to the response, suitable for large
+//     or streaming bodies such as proxied responses.
+//   - [Attachment] streams a body with a Content-Disposition header for download.
 //     that prompts browsers to save the body as a file.
 //
 // For static files that need Range requests or caching, prefer
@@ -163,10 +162,10 @@ type Router interface {
 	// with the same behavior as [http.ServeMux.HandleFunc] and [http.HandleFunc].
 	HandleFunc(pattern string, handler http.HandlerFunc)
 
-	// Any Get Post Delete Patch Put Options Head Connect and Trace
-	// register handlerFunc on the given path for their respective HTTP
-	// methods; Any matches all methods. Unlike Handle and HandleFunc, the
-	// path takes no method prefix — the helper supplies it.
+	// Any Get, Post, Delete, Patch, Put, Options, Head, Connect, and Trace
+	// register handlerFunc for their respective HTTP methods.
+	// Any matches all methods. Unlike Handle and HandleFunc, these helpers
+	// take a path without a method prefix.
 	Any(path string, handlerFunc http.HandlerFunc)
 	Get(path string, handlerFunc http.HandlerFunc)
 	Post(path string, handlerFunc http.HandlerFunc)

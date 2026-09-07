@@ -27,10 +27,10 @@ native performance untouched. Simple, not simplistic.
   context type to learn
 - Wrapper composition with `Chain` and `ChainFunc`
 - Conditional wrapper application with `Selector`
-- [Request binding](#request-binding) into structs from the query, form,
-  path, headers and body
-- [Response helpers](#response-helpers) that write a full response in one
-  call
+- [Request binding](#request-binding): `BindJSON`, `BindXML`, `BindQuery`,
+  `BindForm`, `BindPath` and `BindHeader`
+- [Response helpers](#response-helpers): `JSON`, `XML`, `Text`, `Bytes`,
+  `Stream` and `Attachment`
 - Graceful shutdown with `Run`
 
 ### Built-in wrappers
@@ -171,7 +171,6 @@ func listUsers(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	// In a real app, q.Page would drive database pagination.
 	_ = sim.JSON(w, http.StatusOK, struct {
 		Page  int    `json:"page"`
 		Users []user `json:"users"`
@@ -190,7 +189,6 @@ func getUser(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	// In a real app, p.ID would drive a database lookup.
 	_ = sim.JSON(w, http.StatusOK, user{ID: p.ID, Name: "alice", Age: 30})
 }
 
@@ -211,7 +209,6 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func updateUser(w http.ResponseWriter, r *http.Request) {
-	// A PUT carries a path parameter and a body; bind each in turn.
 	p, err := sim.BindPath[struct {
 		ID string `path:"id"`
 	}](r)
@@ -225,7 +222,7 @@ func updateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	u.ID = p.ID
-	// In a real app, the updated user would be stored here.
+
 	_ = sim.JSON(w, http.StatusOK, u)
 }
 

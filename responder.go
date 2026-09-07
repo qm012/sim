@@ -34,11 +34,6 @@ func Indented(v bool) JSONEncoderOption {
 }
 
 // JSON writes data as JSON with the given status code.
-//
-// The status code is sent before data is encoded, so a value that cannot
-// be encoded leaves the client with statusCode and an empty body. Such an
-// error can only be logged: the response is already committed, and a later
-// WriteHeader is ignored.
 func JSON(w http.ResponseWriter, statusCode int, data any, opts ...JSONEncoderOption) error {
 	o := jsonEncoderOptions{escapeHTML: true}
 	for _, opt := range opts {

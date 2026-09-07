@@ -158,9 +158,9 @@ func ExampleBytes() {
 
 func ExampleStream() {
 	w := httptest.NewRecorder()
-	_ = sim.Stream(w, http.StatusOK, "text/plain", strings.NewReader("chunked body"))
+	_ = sim.Stream(w, http.StatusOK, "text/plain", strings.NewReader("hello"))
 	fmt.Print(w.Body)
-	// Output: chunked body
+	// Output: hello
 }
 
 func ExampleAttachment() {

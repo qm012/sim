@@ -16,7 +16,7 @@ native performance untouched. Simple, not simplistic.
 
 ## Features
 
-**Core**
+### Core
 
 - Zero dependencies — only the Go standard library
 - Method-based routing: `Get`, `Post`, `Put`, `Delete`, `Patch`,
@@ -27,14 +27,13 @@ native performance untouched. Simple, not simplistic.
   context type to learn
 - Wrapper composition with `Chain` and `ChainFunc`
 - Conditional wrapper application with `Selector`
-- Response helpers: `JSON` (with `EscapeForHTML` / `Indented` options),
-  `XML`, `Text`, `Bytes`, `Stream` for chunked streaming, and
-  `Attachment` for file downloads
-- Request binding into structs with `query`, `form`, `path`, `header`
-  and `JSON`/`XML` tags
+- [Request binding](#request-binding): `BindJSON`, `BindXML`, `BindQuery`,
+  `BindForm`, `BindPath` and `BindHeader`
+- [Response helpers](#response-helpers): `JSON`, `XML`, `Text`, `Bytes`,
+  `Stream` and `Attachment`
 - Graceful shutdown with `Run`
 
-**Built-in wrappers**
+### Built-in wrappers
 
 | Wrapper              | What it does                                                                            |
 |----------------------|-----------------------------------------------------------------------------------------|
@@ -44,17 +43,25 @@ native performance untouched. Simple, not simplistic.
 
 `Default` bundles all three wrappers, ready to use with no configuration.
 
-**Request binding**
+### Request binding
 
-- Bind requests into your own structs: `BindJSON`, `BindXML`,
-  `BindQuery`, `BindForm`, `BindPath` and `BindHeader`
+- Bind incoming request data into your own structs from JSON, XML, query,
+  form, path, and header values.
 - Struct tags with `default=` values, embedded structs, multipart file
-  uploads and map targets
+  uploads, and map targets
 - Validation via `Validator`, custom formats via `Decoder`
 - Read the request body more than once with `BufferBody`
 
 See the [package documentation](https://pkg.go.dev/github.com/qm012/sim)
 for the full struct-tag rules.
+
+### Response helpers
+
+- Write JSON, XML, text, byte, streaming, and attachment responses
+- JSON options: `EscapeForHTML` for safe HTML embedding, `Indented`
+  for readable output
+- `Stream` for large or in-progress bodies without loading them into
+  memory, `Attachment` for file downloads
 
 ## Installation
 
@@ -79,7 +86,7 @@ import (
 func main() {
 	app := sim.Default()
 	app.Get("/", func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte("hello, sim"))
+		_ = sim.Text(w, http.StatusOK, "hello, sim")
 	})
 	_ = app.Run(context.Background(), ":8080")
 }
@@ -94,7 +101,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -120,10 +126,10 @@ func main() {
 	)
 
 	app.Get("/", func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte("welcome"))
+		_ = sim.Text(w, http.StatusOK, "welcome")
 	})
 	app.Any("/ping", func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte("pong"))
+		_ = sim.Text(w, http.StatusOK, "pong")
 	})
 
 	// Group routes under a common prefix.
@@ -164,15 +170,30 @@ func listUsers(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	_, _ = fmt.Fprintf(w, "list users, page %d\n", q.Page)
+	_ = sim.JSON(w, http.StatusOK, struct {
+		Page  int    `json:"page"`
+		Users []user `json:"users"`
+	}{q.Page, []user{
+		{Name: "alice", Age: 30},
+		{Name: "bob", Age: 25},
+	}})
 }
 
 func getUser(w http.ResponseWriter, r *http.Request) {
-	_, _ = fmt.Fprintf(w, "user %s", r.PathValue("id"))
+  // BindPath fills a struct from path values.
+	p, err := sim.BindPath[struct {
+		ID string `path:"id"`
+	}](r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	_ = sim.JSON(w, http.StatusOK, user{ID: p.ID, Name: "alice", Age: 30})
 }
 
-// user is the payload createUser decodes from the request body.
+// user is the payload the API exchanges with its clients.
 type user struct {
+	ID   string `json:"id,omitempty"`
 	Name string `json:"name"`
 	Age  int    `json:"age"`
 }
@@ -183,12 +204,25 @@ func createUser(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	w.WriteHeader(http.StatusCreated)
-	_, _ = fmt.Fprintf(w, "user %s created\n", u.Name)
+	_ = sim.JSON(w, http.StatusCreated, u)
 }
 
 func updateUser(w http.ResponseWriter, r *http.Request) {
-	_, _ = fmt.Fprintf(w, "user %s updated", r.PathValue("id"))
+	p, err := sim.BindPath[struct {
+		ID string `path:"id"`
+	}](r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	u, err := sim.BindJSON[user](r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	u.ID = p.ID
+
+	_ = sim.JSON(w, http.StatusOK, u)
 }
 
 func deleteUser(w http.ResponseWriter, _ *http.Request) {
@@ -196,7 +230,7 @@ func deleteUser(w http.ResponseWriter, _ *http.Request) {
 }
 
 func adminPanel(w http.ResponseWriter, _ *http.Request) {
-	_, _ = fmt.Fprintln(w, "admin")
+	_ = sim.Text(w, http.StatusOK, "admin")
 }
 ```
 
@@ -207,12 +241,25 @@ go run main.go
 ```
 
 Open http://localhost:8080/ to see "welcome", and
-http://localhost:8080/api/users for the user list. The endpoints speak
-HTTP, so try binding too:
+http://localhost:8080/api/users for the user list. The endpoints return
+JSON. Try them:
 
 ```bash
 curl 'localhost:8080/api/users?page=2'
-curl -X POST localhost:8080/api/users -d '{"name":"alice","age":30}'
+# {"page":2,"users":[{"name":"alice","age":30},{"name":"bob","age":25}]}
+
+curl localhost:8080/api/users/1
+# {"id":"1","name":"alice","age":30}
+
+curl -X POST localhost:8080/api/users \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"alice","age":30}'
+# {"name":"alice","age":30}
+
+curl -X PUT localhost:8080/api/users/1 \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"alice","age":31}'
+# {"id":"1","name":"alice","age":31}
 ```
 
 ## Contributing

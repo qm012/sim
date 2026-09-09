@@ -23,6 +23,8 @@ native performance untouched. Simple, not simplistic.
   `Options`, `Head`, `Connect`, `Trace`, and `Any`
 - Routing follows the [net/http.ServeMux](https://pkg.go.dev/net/http#ServeMux) patterns
 - Route groups under a common prefix
+- Customizable 404 and 405 responses with `SetNotFoundHandler` and
+  `SetMethodNotAllowedHandler`
 - Standard `net/http` handlers work everywhere — no framework-specific
   context type to learn
 - Wrapper composition with `Chain` and `ChainFunc`
